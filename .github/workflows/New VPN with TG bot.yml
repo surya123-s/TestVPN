@@ -1,4 +1,4 @@
-name: Tailscale Exit Node with Telegram Notify
+name: Tailscale With Bot Notification
 
 on:
   workflow_dispatch:
@@ -43,7 +43,7 @@ jobs:
 
       - name: Send Telegram Start Notification
         run: |
-          MSG="🚀 New Tailscale Exit Node Online%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}%0A⏱️ Active for 6 hours"
+          MSG="🚀 Tailscale With Bot Notification Node is Online%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}%0A⏱️ Active for 6 hours"
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
           -d chat_id=${{ secrets.TG_CHAT_ID }} \
           -d text="$MSG"
@@ -62,7 +62,7 @@ jobs:
       - name: Send Telegram Stop Notification
         if: always()
         run: |
-          MSG="🛑 Tailscale Exit Node Stopped%0A🌐 Tailscale IP was: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP was: ${{ steps.get_ips.outputs.pub_ip }}"
+          MSG="🛑 Tailscale With Bot Notification Node is Stopped%0A🌐 Tailscale IP was: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP was: ${{ steps.get_ips.outputs.pub_ip }}"
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
           -d chat_id=${{ secrets.TG_CHAT_ID }} \
           -d text="$MSG"
