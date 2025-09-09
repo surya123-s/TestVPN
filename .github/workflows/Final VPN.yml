@@ -1,4 +1,4 @@
-name: Tailscale VPN With SSH
+name: Tailscale Exit Node with Telegram Notify
 
 on:
   workflow_dispatch:
@@ -10,9 +10,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install Tailscale
+      - name: Install Tailscale + OpenSSH
         run: |
           sudo apt-get update
+          sudo apt-get install -y openssh-server
           curl -fsSL https://tailscale.com/install.sh | sh
 
       - name: Enable IP Forwarding
@@ -20,15 +21,27 @@ jobs:
           sudo sysctl -w net.ipv4.ip_forward=1
           sudo sysctl -w net.ipv6.conf.all.forwarding=1
 
-      - name: Create Temporary SSH User
-        id: create_user
+      - name: Create SSH User & Keys
+        id: ssh_setup
         run: |
-          USERNAME="cyberuser"
-          PASSWORD="Cyber@123"
-          sudo useradd -m $USERNAME || true
-          echo "$USERNAME:$PASSWORD" | sudo chpasswd
-          echo "USERNAME=$USERNAME" >> $GITHUB_ENV
-          echo "PASSWORD=$PASSWORD" >> $GITHUB_ENV
+          USER=cyberuser
+          PASS=$(openssl rand -base64 12)
+          sudo useradd -m -s /bin/bash $USER
+          echo "$USER:$PASS" | sudo chpasswd
+
+          # Generate SSH keypair
+          mkdir -p /home/$USER/.ssh
+          ssh-keygen -t ed25519 -f /home/$USER/.ssh/id_ed25519 -N "" <<< y >/dev/null 2>&1
+          PUB_KEY=$(cat /home/$USER/.ssh/id_ed25519.pub)
+          PRIV_KEY=$(cat /home/$USER/.ssh/id_ed25519)
+
+          echo "$PUB_KEY" | sudo tee -a /home/$USER/.ssh/authorized_keys
+
+          echo "username=$USER" >> $GITHUB_ENV
+          echo "password=$PASS" >> $GITHUB_ENV
+          echo "privkey<<EOF" >> $GITHUB_ENV
+          echo "$PRIV_KEY" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Start Tailscale Exit Node
         run: |
@@ -53,14 +66,10 @@ jobs:
 
       - name: Send Telegram Start Notification
         run: |
-          MSG="🚀 Tailscale VPN With SSH Node is Online%0A"
-          MSG+="🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A"
-          MSG+="🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}%0A"
-          MSG+="🖥️ SSH Credentials → User: ${{ env.USERNAME }}, Pass: ${{ env.PASSWORD }}%0A"
-          MSG+="⏱️ Active for 6 hours"
-          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
-          -d chat_id=${{ secrets.TG_CHAT_ID }} \
-          -d text="$MSG"
+          MSG="🚀 Tailscale Exit Node Online%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}%0A👤 SSH User: ${{ env.username }}%0A🔑 SSH Password: ${{ env.password }}%0A👤 SSH ==> ssh ${{ env.username }}@${{ steps.get_ips.outputs.ts_ip }}%0A🗝️ Tailscale SSH Key:%0A${{ env.privkey }}%0A⏱️ Active for 6 hours"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
+            -d chat_id=${{ secrets.TG_CHAT_ID }} \
+            -d text="$MSG"
 
       - name: Keep Runner Alive
         run: |
@@ -76,9 +85,7 @@ jobs:
       - name: Send Telegram Stop Notification
         if: always()
         run: |
-          MSG="🛑 Tailscale Exit Node Stopped%0A"
-          MSG+="🌐 Tailscale IP was: ${{ steps.get_ips.outputs.ts_ip }}%0A"
-          MSG+="🌍 Public IP was: ${{ steps.get_ips.outputs.pub_ip }}"
-          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
-          -d chat_id=${{ secrets.TG_CHAT_ID }} \
-          -d text="$MSG"
+          MSG="🛑 Tailscale Exit Node Stopped%0A🌐 Tailscale IP was: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP was: ${{ steps.get_ips.outputs.pub_ip }}"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
+            -d chat_id=${{ secrets.TG_CHAT_ID }} \
+            -d text="$MSG"
