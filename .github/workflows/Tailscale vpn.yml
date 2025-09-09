@@ -7,7 +7,7 @@ on:
 
 jobs:
   run-tailscale:
-    runs-on: [self-hosted, south-india]   # 👈 Targets your self-hosted runner with label "south-india"
+    runs-on: [ubuntu-latest , south-india]   # 👈 Targets your self-hosted runner with label "south-india"
 
     steps:
       - name: Install Tailscale
