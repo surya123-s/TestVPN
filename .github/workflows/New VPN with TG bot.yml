@@ -23,7 +23,7 @@ jobs:
       - name: Start Tailscale Exit Node
         run: |
           sudo tailscale up \
-            --authkey ${{ secrets.TAILSCALE_AUTH_KEY }} \
+            --authkey ${{ secrets.TAILSCALE_AUTHKEY }} \
             --ssh \
             --advertise-exit-node
         env:
