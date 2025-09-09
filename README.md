@@ -45,10 +45,10 @@ tailscale up --exit-node=<worker_tailscale_ip>
 
 
 
-```
-```
+
+
 🙏 Credits
 
 Made with ❤️ by **Surya..!!!**  
-For **learning & educational use only**```
+For **learning & educational purpose only**
 
