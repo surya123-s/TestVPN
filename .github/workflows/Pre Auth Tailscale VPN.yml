@@ -1,0 +1,77 @@
+name: Tailscale With Bot Notification
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"   # Runs every 6 hours
+
+jobs:
+  run-tailscale:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Tailscale
+        run: |
+          sudo apt-get update
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Enable IP Forwarding
+        run: |
+          sudo sysctl -w net.ipv4.ip_forward=1
+          sudo sysctl -w net.ipv6.conf.all.forwarding=1
+
+      - name: Get Runner Hostname
+        id: runner_info
+        run: |
+          RUNNER_HOSTNAME=$(hostname)
+          echo "runner_hostname=$RUNNER_HOSTNAME" >> $GITHUB_ENV
+          echo "runner_hostname=$RUNNER_HOSTNAME" >> $GITHUB_OUTPUT
+
+      - name: Start Tailscale Exit Node
+        run: |
+          sudo tailscale up \
+            --authkey ${{ secrets.TAILSCALE_PREAUTHKEY }} \
+            --ssh \
+            --advertise-exit-node \
+            --hostname ${{ steps.runner_info.outputs.runner_hostname }} \
+            --reset
+        env:
+          TS_SOCKET: /tmp/tailscaled.sock
+
+      - name: Get Tailscale & Public IP
+        id: get_ips
+        run: |
+          TAILSCALE_IP=$(sudo tailscale ip -4)
+          PUBLIC_IP=$(curl -s ifconfig.me)
+          echo "TAILSCALE_IP=$TAILSCALE_IP" >> $GITHUB_ENV
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+          echo "ts_ip=$TAILSCALE_IP" >> $GITHUB_OUTPUT
+          echo "pub_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+        env:
+          TS_SOCKET: /tmp/tailscaled.sock
+
+      - name: Send Telegram Start Notification
+        run: |
+          MSG="🚀 Tailscale With Bot Notification Node is Online%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}%0A🏷️ Runner Hostname: ${{ steps.runner_info.outputs.runner_hostname }}%0A⏱️ Active for 6 hours"
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TG_CHAT_ID }} \
+            -d text="$MSG"
+
+      - name: Keep Runner Alive
+        run: |
+          echo "Runner active for 6 hours. It will auto-restart again on schedule."
+          sleep 21600 # 6 hours
+
+      - name: Cleanup Exit Node
+        if: always()
+        run: |
+          echo "🛑 Cleaning up Tailscale exit node..."
+          sudo tailscale down
+
+      - name: Send Telegram Stop Notification
+        if: always()
+        run: |
+          MSG="🛑 Tailscale With Bot Notification Node is Stopped%0A🌐 Tailscale IP was: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP was: ${{ steps.get_ips.outputs.pub_ip }}%0A🏷️ Runner Hostname was: ${{ steps.runner_info.outputs.runner_hostname }}"
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TG_CHAT_ID }} \
+            -d text="$MSG"
