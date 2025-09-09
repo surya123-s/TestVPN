@@ -1,0 +1,38 @@
+name: Tailscale VPN Node
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-tailscale:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Tailscale
+        run: |
+          sudo apt-get update
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Enable IP Forwarding
+        run: |
+          sudo sysctl -w net.ipv4.ip_forward=1
+          sudo sysctl -w net.ipv6.conf.all.forwarding=1
+
+      - name: Start Tailscale Node
+        run: |
+          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --ssh
+        env:
+          TS_SOCKET: /tmp/tailscaled.sock
+
+      - name: Display Tailscale IP
+        run: |
+          TAILSCALE_IP=$(sudo tailscale ip -4)
+          echo "TAILSCALE_IP=$TAILSCALE_IP" >> $GITHUB_ENV
+          echo "Your Tailscale IP is: $TAILSCALE_IP"
+        env:
+          TS_SOCKET: /tmp/tailscaled.sock
+
+      - name: Keep Runner Alive
+        run: |
+          echo "Runner will remain active for 6 hours. To stop it, go to the Actions tab and cancel the workflow."
+          sleep 21600 # 6 hours in seconds
