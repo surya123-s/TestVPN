@@ -39,3 +39,9 @@ Now all your traffic will exit through the GitHub worker’s IP 🎉
 ```bash
 # On client with Tailscale CLI (Linux/macOS/Windows WSL)
 tailscale up --exit-node=<worker_tailscale_ip>
+
+## 🙏 Credits
+
+Made with ❤️ by **Surya..!!!**  
+For **learning & educational use only**
+
