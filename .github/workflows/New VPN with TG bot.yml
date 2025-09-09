@@ -36,8 +36,8 @@ jobs:
           PUBLIC_IP=$(curl -s ifconfig.me)
           echo "TAILSCALE_IP=$TAILSCALE_IP" >> $GITHUB_ENV
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
-          echo "::set-output name=ts_ip::$TAILSCALE_IP"
-          echo "::set-output name=pub_ip::$PUBLIC_IP"
+          echo "ts_ip=$TAILSCALE_IP" >> $GITHUB_OUTPUT
+          echo "pub_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
         env:
           TS_SOCKET: /tmp/tailscaled.sock
 
