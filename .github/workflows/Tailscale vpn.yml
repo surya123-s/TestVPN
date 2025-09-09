@@ -1,4 +1,4 @@
-name: Tailscale Exit Node with Telegram Notify
+name: Tailscale VPN without TG Bots
 
 on:
   workflow_dispatch:
