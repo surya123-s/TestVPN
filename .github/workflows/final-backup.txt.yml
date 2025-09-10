@@ -56,8 +56,8 @@ jobs:
           CC=$(echo $LOCATION_JSON | jq -r '.countryCode // ""')
           ISP=$(echo $LOCATION_JSON | jq -r '.isp // "Unknown ISP"')
 
-          # ✅ Convert country code to emoji flag
-          FLAG=$(echo $CC | awk '{for(i=1;i<=length;i++){c=substr($0,i,1);printf "\\U1F1%02X",toupper(c)-65+65}print ""}' | xargs -0 printf "%b")
+          # ✅ Safe flag conversion (no printf escape errors)
+          FLAG=$(echo "$CC" | awk '{for(i=1;i<=length;i++){c=substr($0,i,1);u=ord(c);printf "%c", 0x1F1E6+u-65}}' ord="function ord(c){return index(\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",c)-1+65}")
 
           echo "TAILSCALE_IP=$TAILSCALE_IP" >> $GITHUB_ENV
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
@@ -72,7 +72,7 @@ jobs:
         run: |
           START_TIME=${{ env.START_TIME }}
 
-          # ✅ Calculate next workflow run (6-hour schedule, convert to IST)
+          # ✅ Calculate next workflow run (6-hour schedule, IST)
           UTC_HOUR=$(date -u +%H)
           NEXT_RUN_HOUR=$(( ( (10#$UTC_HOUR / 6 + 1) * 6 ) % 24 ))
           NEXT_RUN_IST=$(date -d "today ${NEXT_RUN_HOUR}:00 UTC +5 hours 30 minutes" +"%I:%M %p")
@@ -98,9 +98,8 @@ jobs:
             CC=$(echo $LOCATION_JSON | jq -r '.countryCode // ""')
             ISP=$(echo $LOCATION_JSON | jq -r '.isp // "Unknown ISP"')
 
-            FLAG=$(echo $CC | awk '{for(i=1;i<=length;i++){c=substr($0,i,1);printf "\\U1F1%02X",toupper(c)-65+65}print ""}' | xargs -0 printf "%b")
+            FLAG=$(echo "$CC" | awk '{for(i=1;i<=length;i++){c=substr($0,i,1);u=ord(c);printf "%c", 0x1F1E6+u-65}}' ord="function ord(c){return index(\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",c)-1+65}")
 
-            # ✅ Recalculate every update
             UTC_HOUR=$(date -u +%H)
             NEXT_RUN_HOUR=$(( ( (10#$UTC_HOUR / 6 + 1) * 6 ) % 24 ))
             NEXT_RUN_IST=$(date -d "today ${NEXT_RUN_HOUR}:00 UTC +5 hours 30 minutes" +"%I:%M %p")
