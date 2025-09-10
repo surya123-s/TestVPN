@@ -1,4 +1,4 @@
-name: Tailscale With Bot Notification & Region
+name: Tailscale With Bot & Region
 
 on:
   workflow_dispatch:
