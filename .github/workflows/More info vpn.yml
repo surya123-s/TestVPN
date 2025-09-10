@@ -43,14 +43,16 @@ jobs:
           CITY=$(echo $LOCATION_JSON | jq -r '.city')
           COUNTRY=$(echo $LOCATION_JSON | jq -r '.country')
           COUNTRY_CODE=$(echo $LOCATION_JSON | jq -r '.countryCode')
+          ISP=$(echo $LOCATION_JSON | jq -r '.isp')
 
-          # Function to convert country code -> emoji flag
+          # Convert country code -> flag emoji
           FLAG=""
           for ((i=0; i<${#COUNTRY_CODE}; i++)); do
             CHAR=${COUNTRY_CODE:$i:1}
             CODE=$((0x1F1E6 + $(printf "%d" "'$CHAR") - 65))
-            FLAG="$FLAG$(printf "\\U%08X" $CODE)"
+            FLAG="$FLAG$(printf '\\U%08X' $CODE)"
           done
+          FLAG=$(echo -e "$FLAG")   # force proper emoji rendering
 
           RUNNER_NAME=$HOSTNAME
 
@@ -58,6 +60,7 @@ jobs:
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
           echo "CITY=$CITY" >> $GITHUB_ENV
           echo "COUNTRY=$COUNTRY" >> $GITHUB_ENV
+          echo "ISP=$ISP" >> $GITHUB_ENV
           echo "FLAG=$FLAG" >> $GITHUB_ENV
           echo "RUNNER_NAME=$RUNNER_NAME" >> $GITHUB_ENV
 
@@ -65,6 +68,7 @@ jobs:
           echo "pub_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
           echo "city=$CITY" >> $GITHUB_OUTPUT
           echo "country=$COUNTRY" >> $GITHUB_OUTPUT
+          echo "isp=$ISP" >> $GITHUB_OUTPUT
           echo "flag=$FLAG" >> $GITHUB_OUTPUT
           echo "runner=$RUNNER_NAME" >> $GITHUB_OUTPUT
         env:
@@ -72,7 +76,7 @@ jobs:
 
       - name: Send Telegram Start Notification
         run: |
-          MSG="🚀 Tailscale Node Online%0A🖥️ Runner: ${{ steps.get_ips.outputs.runner }}%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}%0A📍 Location: ${{ steps.get_ips.outputs.city }}, ${{ steps.get_ips.outputs.country }} ${{ steps.get_ips.outputs.flag }}%0A⏱️ Active for 6 hours"
+          MSG="🚀 Tailscale Node Online%0A🖥️ Runner: ${{ steps.get_ips.outputs.runner }}%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}%0A📍 Location: ${{ steps.get_ips.outputs.city }}, ${{ steps.get_ips.outputs.country }} ${{ steps.get_ips.outputs.flag }}%0A🏢 ISP: ${{ steps.get_ips.outputs.isp }}%0A⏱️ Active for 6 hours"
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
           -d chat_id=${{ secrets.TG_CHAT_ID }} \
           -d text="$MSG"
@@ -100,7 +104,7 @@ jobs:
       - name: Send Telegram Stop Notification
         if: always()
         run: |
-          MSG="🛑 Tailscale Node Stopped%0A🖥️ Runner: ${{ steps.get_ips.outputs.runner }}%0A🌐 Tailscale IP was: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP was: ${{ steps.get_ips.outputs.pub_ip }}%0A📍 Location was: ${{ steps.get_ips.outputs.city }}, ${{ steps.get_ips.outputs.country }} ${{ steps.get_ips.outputs.flag }}%0A🕒 Active Time: $UPTIME"
+          MSG="🛑 Tailscale Node Stopped%0A🖥️ Runner: ${{ steps.get_ips.outputs.runner }}%0A🌐 Tailscale IP was: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP was: ${{ steps.get_ips.outputs.pub_ip }}%0A📍 Location was: ${{ steps.get_ips.outputs.city }}, ${{ steps.get_ips.outputs.country }} ${{ steps.get_ips.outputs.flag }}%0A🏢 ISP was: ${{ steps.get_ips.outputs.isp }}%0A🕒 Active Time: $UPTIME"
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
           -d chat_id=${{ secrets.TG_CHAT_ID }} \
           -d text="$MSG"
