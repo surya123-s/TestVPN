@@ -1,4 +1,4 @@
-name: Tailscale 2
+name: Tailscale
 on:
   workflow_dispatch: {}
   schedule:
@@ -64,12 +64,12 @@ jobs:
 
       - name: Live Telegram Notification (Single Message)
         run: |
-          START_TIME=$START_TIME
+          START_TIME=${{ env.START_TIME }}
 
-          # ✅ Correct next workflow calculation
+          # ✅ Correct next workflow calculation (use base-10 safe parsing)
           UTC_HOUR=$(date -u +%H)
-          NEXT_RUN_HOUR=$(( ((UTC_HOUR/6 + 1) * 6) % 24 ))
-          NEXT_RUN_IST=$(date -d "today ${NEXT_RUN_HOUR}:00 UTC +5 hour 30 min" +"%I:%M %p")
+          NEXT_RUN_HOUR=$(( ( (10#$UTC_HOUR / 6 + 1) * 6 ) % 24 ))
+          NEXT_RUN_IST=$(date -d "today ${NEXT_RUN_HOUR}:00 UTC +5 hours 30 minutes" +"%I:%M %p")
 
           MSG="🚀 Tailscale Node Online%0A🖥️ Runner: ${{ steps.runner_info.outputs.runner_hostname }}%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}%0A📍 Location: ${{ env.CITY }}, ${{ env.COUNTRY }}%0A🏢 ISP: ${{ env.ISP }}%0A⏱️ Running since: 00:00:00%0A⏰ Next workflow (IST): $NEXT_RUN_IST"
 
@@ -91,12 +91,12 @@ jobs:
             COUNTRY=$(echo $LOCATION_JSON | jq -r '.country // "Unknown Country"')
             ISP=$(echo $LOCATION_JSON | jq -r '.isp // "Unknown ISP"')
 
-            # ✅ Recalculate every update
+            # ✅ Recalculate every update (safe base-10 parsing)
             UTC_HOUR=$(date -u +%H)
-            NEXT_RUN_HOUR=$(( ((UTC_HOUR/6 + 1) * 6) % 24 ))
-            NEXT_RUN_IST=$(date -d "today ${NEXT_RUN_HOUR}:00 UTC +5 hour 30 min" +"%I:%M %p")
+            NEXT_RUN_HOUR=$(( ( (10#$UTC_HOUR / 6 + 1) * 6 ) % 24 ))
+            NEXT_RUN_IST=$(date -d "today ${NEXT_RUN_HOUR}:00 UTC +5 hours 30 minutes" +"%I:%M %p")
 
-            MSG="🚀 Tailscale Node Online%0A🖥️ Runner: ${{ steps.runner_info.outputs.runner_hostname }}%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: $PUBLIC_IP%0A📍 Location: $CITY, $COUNTRY%0A🏢 ISP: $ISP%0A⏱️ Running since: ${HOURS}:${MINUTES}:${SECONDS}%0A⏰ Next workflow (IST): $NEXT_RUN_IST"
+            MSG="🚀 Tailscale Node Online%0A🖥️ Runner: ${{ steps.runner_info.outputs.runner_hostname }}%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: $PUBLIC_IP%0A📍 Location: $CITY, $COUNTRY 🇺🇸%0A🏢 ISP: $ISP%0A⏱️ Running since: ${HOURS}:${MINUTES}:${SECONDS}%0A⏰ Next workflow (IST): $NEXT_RUN_IST"
 
             curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/editMessageText" \
               -d chat_id=${{ secrets.TG_CHAT_ID }} \
@@ -115,7 +115,7 @@ jobs:
         if: always()
         run: |
           END_TIME=$(date +%s)
-          DURATION=$((END_TIME - START_TIME))
+          DURATION=$((END_TIME - ${{ env.START_TIME }}))
           HOURS=$(printf "%02d" $((DURATION/3600)))
           MINUTES=$(printf "%02d" $(((DURATION%3600)/60)))
           SECONDS=$(printf "%02d" $((DURATION%60)))
