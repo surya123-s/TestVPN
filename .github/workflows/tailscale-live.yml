@@ -42,7 +42,6 @@ jobs:
       - name: Live Update Telegram Notification
         id: telegram_notification
         run: |
-          # Use a consistent timestamp to prevent drift
           START_TIME=$(date +%s)
           
           # Initial message setup
@@ -76,7 +75,6 @@ EOF
             -d text="$INIT_MSG" \
             | jq -r '.result.message_id')
           
-          # Set the message_id as a step output for later use
           echo "message_id=$MSG_ID" >> $GITHUB_OUTPUT
 
           END_TIME=$((START_TIME + 21600))
@@ -124,8 +122,6 @@ EOF
           LOCATION=$(curl -s https://ipapi.co/$PUBLIC_IP/city/,%20$PUBLIC_IP/country_name/)
           COUNTRY_FLAG=$(curl -s https://ipapi.co/$PUBLIC_IP/country/)
           ISP=$(curl -s https://ipapi.co/$PUBLIC_IP/org/)
-          # The START_TIME variable is not available here, so we'll approximate elapsed time.
-          # A more robust solution would be to pass the start time as an output from the previous step.
           MSG=$(cat <<EOF
 🛑 Tailscale Node Stopped
 ──────────────────────────────
@@ -145,3 +141,31 @@ EOF
             -d text="$MSG"
         env:
           TS_SOCKET: /tmp/tailscaled.sock
+          
+<br>
+
+***
+
+<br>
+
+## Bot Outputs and Explanation 🤖
+
+When this workflow runs successfully, you'll see a series of bot messages in your specified Telegram chat.
+
+### Initial Message
+A message will appear in your Telegram chat soon after the workflow starts, confirming the new Tailscale node is online. This is the output from the `Live Update Telegram Notification` step's initial `curl` command.
+
+<br>
+
+### Live Updates
+Every 5 minutes (`sleep 300`), the `while` loop will execute. The script will fetch the latest network information (which should remain constant unless the runner is moved) and update the `Running since` timer. The `editMessageText` API call ensures the original message is edited in place, creating a "live update" effect.
+
+<br>
+
+### Final Notification
+When the workflow completes (after 6 hours or if it is manually canceled), the `Send Telegram Stop Notification` step will run due to the `if: always()` condition. A final message will be sent to the chat, notifying you that the node is no longer active.
+
+This video demonstrates a different, simpler GitHub Actions workflow that automatically deploys a static website, which is another common use case for these kinds of scripts.
+
+[Static site deployments made easy with Github Actions and Tailscale](https://www.youtube.com/watch?v=OQJAX-Ce1YY)
+http://googleusercontent.com/youtube_content/3
