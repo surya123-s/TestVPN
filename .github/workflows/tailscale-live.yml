@@ -1,18 +1,19 @@
-name: Tailscale Live Node
+name: Tailscale Live Node with Bot Notification (Single Message)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"   # Every 6 hours
+    - cron: "0 */6 * * *"   # Runs every 6 hours
 
 jobs:
   run-tailscale:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install Tailscale
+      - name: Install Tailscale + jq
         run: |
           sudo apt-get update
+          sudo apt-get install -y curl jq
           curl -fsSL https://tailscale.com/install.sh | sh
 
       - name: Enable IP Forwarding
@@ -20,13 +21,12 @@ jobs:
           sudo sysctl -w net.ipv4.ip_forward=1
           sudo sysctl -w net.ipv6.conf.all.forwarding=1
 
-      - name: Get Runner Info
+      - name: Get Runner Hostname
         id: runner_info
         run: |
-          RUNNER_NAME=$(hostname)
-          CURRENT_TIME=$(date +%s)
-          echo "runner_name=$RUNNER_NAME" >> $GITHUB_ENV
-          echo "current_epoch=$CURRENT_TIME" >> $GITHUB_ENV
+          RUNNER_HOSTNAME=$(hostname)
+          echo "runner_hostname=$RUNNER_HOSTNAME" >> $GITHUB_ENV
+          echo "runner_hostname=$RUNNER_HOSTNAME" >> $GITHUB_OUTPUT
 
       - name: Start Tailscale Exit Node
         run: |
@@ -34,7 +34,7 @@ jobs:
             --authkey ${{ secrets.TAILSCALE_PREAUTHKEY }} \
             --ssh \
             --advertise-exit-node \
-            --hostname ${{ steps.runner_info.outputs.runner_name }} \
+            --hostname ${{ steps.runner_info.outputs.runner_hostname }} \
             --reset
         env:
           TS_SOCKET: /tmp/tailscaled.sock
@@ -44,45 +44,47 @@ jobs:
         run: |
           TAILSCALE_IP=$(sudo tailscale ip -4)
           PUBLIC_IP=$(curl -s ifconfig.me)
-          LOCATION=$(curl -s "https://ipapi.co/$PUBLIC_IP/json/" | jq -r '"\(.city), \(.country_name) 🇺🇸"')
-          ISP=$(curl -s "https://ipapi.co/$PUBLIC_IP/org/")
+          LOCATION_JSON=$(curl -s https://ipapi.co/$PUBLIC_IP/json/)
+          CITY=$(echo $LOCATION_JSON | jq -r '.city')
+          COUNTRY=$(echo $LOCATION_JSON | jq -r '.country_name')
+          ISP=$(echo $LOCATION_JSON | jq -r '.org')
+
           echo "TAILSCALE_IP=$TAILSCALE_IP" >> $GITHUB_ENV
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
-          echo "LOCATION=$LOCATION" >> $GITHUB_ENV
+          echo "CITY=$CITY" >> $GITHUB_ENV
+          echo "COUNTRY=$COUNTRY" >> $GITHUB_ENV
           echo "ISP=$ISP" >> $GITHUB_ENV
           echo "ts_ip=$TAILSCALE_IP" >> $GITHUB_OUTPUT
           echo "pub_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
 
-      - name: Send Live Telegram Notification
+      - name: Send Live Telegram Notification (Single Message)
         run: |
-          NEXT_RUN_UTC=$(date -u -d "next hour 0 */6 * * *" +%s)
-          NEXT_RUN_IST=$(date -d "@$((NEXT_RUN_UTC + 19800))" "+%I:%M %p IST")
-          START_EPOCH=${{ env.current_epoch }}
-          MSG="🚀 *Tailscale Node Online*\n🖥️ Runner: ${{ env.runner_name }}\n🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}\n🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}\n📍 Location: ${{ env.LOCATION }}\n🏢 ISP: ${{ env.ISP }}\n⏱️ Running since : 00:00:00\n⏰ Next workflow run: $NEXT_RUN_IST"
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TG_CHAT_ID }}" \
-            -d parse_mode="Markdown" \
-            -d text="$MSG"
+          START_TIME=$(date +%s)
+          # Send initial message and get message_id
+          MSG="🚀 Tailscale Node Online%0A🖥️ Runner: ${{ steps.runner_info.outputs.runner_hostname }}%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}%0A📍 Location: ${{ env.CITY }}, ${{ env.COUNTRY }}%0A🏢 ISP: ${{ env.ISP }}%0A⏱️ Running since: 00:00:00%0A⏰ Next scheduled workflow run (IST): $(date -d "+5 hour 30 min" +'%I:%M %p')"
 
-      - name: Keep Runner Alive & Update Live Time
-        run: |
-          START_EPOCH=${{ env.current_epoch }}
-          while true; do
-            NOW=$(date +%s)
-            DIFF=$((NOW-START_EPOCH))
-            HH=$((DIFF/3600))
-            MM=$(( (DIFF%3600)/60 ))
-            SS=$((DIFF%60))
-            TIME_ELAPSED=$(printf "%02d:%02d:%02d" $HH $MM $SS)
-            NEXT_RUN_UTC=$(date -u -d "next hour 0 */6 * * *" +%s)
-            NEXT_RUN_IST=$(date -d "@$((NEXT_RUN_UTC + 19800))" "+%I:%M %p IST")
-            MSG="🚀 *Tailscale Node Online*\n🖥️ Runner: ${{ env.runner_name }}\n🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}\n🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}\n📍 Location: ${{ env.LOCATION }}\n🏢 ISP: ${{ env.ISP }}\n⏱️ Running since : $TIME_ELAPSED\n⏰ Next workflow run: $NEXT_RUN_IST"
+          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
+            -d chat_id=${{ secrets.TG_CHAT_ID }} \
+            -d text="$MSG")
+          MESSAGE_ID=$(echo $RESPONSE | jq -r '.result.message_id')
+
+          # Update message every 5 minutes
+          while [ $(($(date +%s) - $START_TIME)) -lt 21600 ]; do
+            ELAPSED=$(($(date +%s) - $START_TIME))
+            HOURS=$(printf "%02d" $((ELAPSED/3600)))
+            MINUTES=$(printf "%02d" $(((ELAPSED%3600)/60)))
+            SECONDS=$(printf "%02d" $((ELAPSED%60)))
+            NEXT_RUN_UTC=$(date -u -d "+6 hour" +"%I:%M %p")
+            NEXT_RUN_IST=$(date -d "$NEXT_RUN_UTC UTC +5 hour 30 min" +"%I:%M %p")
+
+            MSG="🚀 Tailscale Node Online%0A🖥️ Runner: ${{ steps.runner_info.outputs.runner_hostname }}%0A🌐 Tailscale IP: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP: ${{ steps.get_ips.outputs.pub_ip }}%0A📍 Location: ${{ env.CITY }}, ${{ env.COUNTRY }}%0A🏢 ISP: ${{ env.ISP }}%0A⏱️ Running since: ${HOURS}:${MINUTES}:${SECONDS}%0A⏰ Next scheduled workflow run (IST): $NEXT_RUN_IST"
+
             curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/editMessageText" \
-              -d chat_id="${{ secrets.TG_CHAT_ID }}" \
-              -d message_id="${{ steps.get_ips.outputs.telegram_message_id }}" \
-              -d parse_mode="Markdown" \
+              -d chat_id=${{ secrets.TG_CHAT_ID }} \
+              -d message_id=$MESSAGE_ID \
               -d text="$MSG"
-            sleep 300
+
+            sleep 300  # every 5 minutes
           done
 
       - name: Cleanup Exit Node
@@ -95,13 +97,11 @@ jobs:
         if: always()
         run: |
           END_TIME=$(date +%s)
-          DURATION=$((END_TIME - ${{ env.current_epoch }}))
-          HH=$((DURATION/3600))
-          MM=$(((DURATION%3600)/60))
-          SS=$((DURATION%60))
-          TIME_ELAPSED=$(printf "%02d:%02d:%02d" $HH $MM $SS)
-          MSG="🛑 *Tailscale Node Stopped*\n🖥️ Runner: ${{ env.runner_name }}\n🌐 Tailscale IP was: ${{ steps.get_ips.outputs.ts_ip }}\n🌍 Public IP was: ${{ steps.get_ips.outputs.pub_ip }}\n📍 Location was: ${{ env.LOCATION }}\n🏢 ISP was: ${{ env.ISP }}\n⏱️ Ran for: $TIME_ELAPSED"
+          DURATION=$((END_TIME - START_TIME))
+          HOURS=$(printf "%02d" $((DURATION/3600)))
+          MINUTES=$(printf "%02d" $(((DURATION%3600)/60)))
+          SECONDS=$(printf "%02d" $((DURATION%60)))
+          MSG="🛑 Tailscale Node Stopped%0A🖥️ Runner: ${{ steps.runner_info.outputs.runner_hostname }}%0A🌐 Tailscale IP was: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP was: ${{ steps.get_ips.outputs.pub_ip }}%0A📍 Location was: ${{ env.CITY }}, ${{ env.COUNTRY }}%0A🏢 ISP: ${{ env.ISP }}%0A⏱️ Active Duration: ${HOURS}:${MINUTES}:${SECONDS}"
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TG_CHAT_ID }}" \
-            -d parse_mode="Markdown" \
+            -d chat_id=${{ secrets.TG_CHAT_ID }} \
             -d text="$MSG"
