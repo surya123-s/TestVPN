@@ -1,4 +1,4 @@
-name: Tailscale With Bot & Region
+name: Tailscale With Bot Notification & Region
 
 on:
   workflow_dispatch:
@@ -34,14 +34,8 @@ jobs:
         run: |
           TAILSCALE_IP=$(sudo tailscale ip -4)
           PUBLIC_IP=$(curl -s ifconfig.me)
-          # Get region info using ipapi.co (no key required, free for casual use)
-          LOCATION=$(curl -s "https://ipapi.co/$PUBLIC_IP/city/"),$(curl -s "https://ipapi.co/$PUBLIC_IP/country_name/")
+          LOCATION="$(curl -s https://ipapi.co/${PUBLIC_IP}/city), $(curl -s https://ipapi.co/${PUBLIC_IP}/country_name)"
           RUNNER_NAME=$(hostname)
-
-          echo "TAILSCALE_IP=$TAILSCALE_IP" >> $GITHUB_ENV
-          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
-          echo "LOCATION=$LOCATION" >> $GITHUB_ENV
-          echo "RUNNER_NAME=$RUNNER_NAME" >> $GITHUB_ENV
 
           echo "ts_ip=$TAILSCALE_IP" >> $GITHUB_OUTPUT
           echo "pub_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
@@ -52,12 +46,13 @@ jobs:
 
       - name: Send Telegram Start Notification
         run: |
-          MSG="🚀 Tailscale Node Online%0A\
-🖥️ Runner: ${{ steps.info.outputs.runner_name }}%0A\
-🌐 Tailscale IP: ${{ steps.info.outputs.ts_ip }}%0A\
-🌍 Public IP: ${{ steps.info.outputs.pub_ip }}%0A\
-📍 Location: ${{ steps.info.outputs.location }}%0A\
+          MSG="🚀 Tailscale Node Online
+🖥️ Runner: ${{ steps.info.outputs.runner_name }}
+🌐 Tailscale IP: ${{ steps.info.outputs.ts_ip }}
+🌍 Public IP: ${{ steps.info.outputs.pub_ip }}
+📍 Location: ${{ steps.info.outputs.location }}
 ⏱️ Active for 6 hours"
+
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id=${{ secrets.TG_CHAT_ID }} \
             -d text="$MSG"
@@ -76,11 +71,12 @@ jobs:
       - name: Send Telegram Stop Notification
         if: always()
         run: |
-          MSG="🛑 Tailscale Node Stopped%0A\
-🖥️ Runner: ${{ steps.info.outputs.runner_name }}%0A\
-🌐 Tailscale IP was: ${{ steps.info.outputs.ts_ip }}%0A\
-🌍 Public IP was: ${{ steps.info.outputs.pub_ip }}%0A\
+          MSG="🛑 Tailscale Node Stopped
+🖥️ Runner: ${{ steps.info.outputs.runner_name }}
+🌐 Tailscale IP was: ${{ steps.info.outputs.ts_ip }}
+🌍 Public IP was: ${{ steps.info.outputs.pub_ip }}
 📍 Location was: ${{ steps.info.outputs.location }}"
+
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id=${{ secrets.TG_CHAT_ID }} \
             -d text="$MSG"
