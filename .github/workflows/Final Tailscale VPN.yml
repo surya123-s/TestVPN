@@ -123,7 +123,7 @@ jobs:
               -d message_id=$MESSAGE_ID \
               -d text="$MSG"
 
-            sleep 300
+            sleep 30
           done
 
       - name: Cleanup Exit Node
