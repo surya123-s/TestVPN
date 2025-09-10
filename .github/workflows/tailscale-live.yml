@@ -1,7 +1,7 @@
 name: Tailscale Live Node Notification
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
   schedule:
     - cron: "0 */6 * * *"  # Every 6 hours
 
@@ -38,23 +38,21 @@ jobs:
         env:
           TS_SOCKET: /tmp/tailscaled.sock
 
-      - name: Live Update Telegram Notification (Edit Same Message)
+      - name: Live Update Telegram Notification
         run: |
           START_TIME=$(date +%s)
 
-          # Get initial IPs and info
+          # Initial message
           TAILSCALE_IP=$(sudo tailscale ip -4)
           PUBLIC_IP=$(curl -s ifconfig.me)
           LOCATION=$(curl -s https://ipapi.co/$PUBLIC_IP/city/,%20$PUBLIC_IP/country_name/)
           COUNTRY_FLAG=$(curl -s https://ipapi.co/$PUBLIC_IP/country/)
           ISP=$(curl -s https://ipapi.co/$PUBLIC_IP/org/)
 
-          # Calculate next workflow run in IST (Kolkata)
           CURRENT_HOUR_UTC=$(date -u +%H)
           NEXT_HOUR_UTC=$(( ( (CURRENT_HOUR_UTC/6 + 1)*6 ) % 24 ))
           NEXT_RUN=$(date -d "today $NEXT_HOUR_UTC:00 +5 hours 30 minutes" +"%I:%M %p IST")
 
-          # Send initial Telegram message
           INIT_MSG=$(cat << EOF
 🚀 Tailscale Node Online
 ──────────────────────────────
@@ -72,10 +70,8 @@ EOF
 
           MSG_ID=$(curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
             -d chat_id=${{ secrets.TG_CHAT_ID }} \
-            -d text="$INIT_MSG" \
-            | jq -r '.result.message_id')
+            -d text="$INIT_MSG" | jq -r '.result.message_id')
 
-          # Update same message every 5 minutes for 6 hours
           END_TIME=$((START_TIME + 21600))
           while [ $(date +%s) -lt $END_TIME ]; do
             NOW=$(date +%s)
