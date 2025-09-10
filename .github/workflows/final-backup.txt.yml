@@ -56,12 +56,16 @@ jobs:
           CC=$(echo $LOCATION_JSON | jq -r '.countryCode // ""')
           ISP=$(echo $LOCATION_JSON | jq -r '.isp // "Unknown ISP"')
 
-          # ✅ Convert country code to flag
+          # ✅ Proper UTF-8 flags
           FLAG=""
           for (( i=0; i<${#CC}; i++ )); do
             c=${CC:i:1}
-            FLAG+=$(printf "\U%X" $((0x1F1E6 + $(printf '%d' "'$c") - 65)))
+            code=$(( $(printf '%d' "'$c") - 65 + 0x1F1E6 ))
+            # Convert to UTF-8 bytes
+            FLAG+=$(printf "\\U%08X" $code)
           done
+          # Convert to real UTF-8 for Telegram
+          FLAG=$(echo -e $FLAG)
 
           echo "TAILSCALE_IP=$TAILSCALE_IP" >> $GITHUB_ENV
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
@@ -72,10 +76,9 @@ jobs:
           echo "ts_ip=$TAILSCALE_IP" >> $GITHUB_OUTPUT
           echo "pub_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
 
-      - name: Live Telegram Notification (Single Message)
+      - name: Live Telegram Notification
         run: |
           START_TIME=${{ env.START_TIME }}
-
           UTC_HOUR=$(date -u +%H)
           NEXT_RUN_HOUR=$(( ( (10#$UTC_HOUR / 6 + 1) * 6 ) % 24 ))
           NEXT_RUN_IST=$(date -d "today ${NEXT_RUN_HOUR}:00 UTC +5 hours 30 minutes" +"%I:%M %p")
@@ -104,8 +107,10 @@ jobs:
             FLAG=""
             for (( i=0; i<${#CC}; i++ )); do
               c=${CC:i:1}
-              FLAG+=$(printf "\U%X" $((0x1F1E6 + $(printf '%d' "'$c") - 65)))
+              code=$(( $(printf '%d' "'$c") - 65 + 0x1F1E6 ))
+              FLAG+=$(printf "\\U%08X" $code)
             done
+            FLAG=$(echo -e $FLAG)
 
             UTC_HOUR=$(date -u +%H)
             NEXT_RUN_HOUR=$(( ( (10#$UTC_HOUR / 6 + 1) * 6 ) % 24 ))
@@ -135,13 +140,14 @@ jobs:
           MINUTES=$(printf "%02d" $(((DURATION%3600)/60)))
           SECONDS=$(printf "%02d" $((DURATION%60)))
 
-          # ✅ Add flag here too
           CC=$(curl -s http://ip-api.com/json/${{ steps.get_ips.outputs.pub_ip }} | jq -r '.countryCode // ""')
           FLAG=""
           for (( i=0; i<${#CC}; i++ )); do
             c=${CC:i:1}
-            FLAG+=$(printf "\U%X" $((0x1F1E6 + $(printf '%d' "'$c") - 65)))
+            code=$(( $(printf '%d' "'$c") - 65 + 0x1F1E6 ))
+            FLAG+=$(printf "\\U%08X" $code)
           done
+          FLAG=$(echo -e $FLAG)
 
           MSG="🛑 Tailscale Node Stopped%0A🖥️ Runner: ${{ steps.runner_info.outputs.runner_hostname }}%0A🌐 Tailscale IP was: ${{ steps.get_ips.outputs.ts_ip }}%0A🌍 Public IP was: ${{ steps.get_ips.outputs.pub_ip }}%0A📍 Location was: ${{ env.CITY }}, ${{ env.COUNTRY }} $FLAG%0A🏢 ISP: ${{ env.ISP }}%0A⏱️ Active Duration: ${HOURS}:${MINUTES}:${SECONDS}"
 
