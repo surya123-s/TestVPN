@@ -1,4 +1,4 @@
-name: Tailscale
+name: Tailscale 5 Hrs
 on:
   workflow_dispatch: {}
   schedule:
