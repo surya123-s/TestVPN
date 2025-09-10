@@ -1,5 +1,4 @@
-name: Tailscale Live Node with Bot Notification
-
+name: Tailscale
 on:
   workflow_dispatch: {}
   schedule:
