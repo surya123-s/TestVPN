@@ -50,15 +50,13 @@ jobs:
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
 
-      - name: Establish Tailscale Connection with Subnet (Exit node optional)
+      - name: Establish Tailscale Connection
         run: |
           $authKey = "${{ secrets.TAILSCALE_PREAUTHKEY }}"
           $hostname = "gh-runner-$env:GITHUB_RUN_ID"
 
-          # 🚨 Exit node is commented to avoid RDP drop. Uncomment if you want.
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$authKey --hostname=$hostname `
-              --advertise-routes=10.0.0.0/16 --accept-routes
-              # --advertise-exit-node
+          # ✅ Only bring up basic tailscale, no subnet / exit node
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$authKey --hostname=$hostname
 
           # Get Tailscale IP
           $tsIP = $null
