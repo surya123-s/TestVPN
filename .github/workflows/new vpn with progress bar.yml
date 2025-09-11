@@ -1,8 +1,16 @@
 name: Tailscale With Progress Bar
 on:
   workflow_dispatch: {}
+  #schedule:
+   # - cron: "0 */5 * * *"
+  #on:
   schedule:
-    - cron: "0 */5 * * *"
+    - cron: "30 1 * * *" #7 AM IST
+    - cron: "30 6 * * *" #12 PM
+    - cron: "30 11 * * *" #5 PM
+    - cron: "30 16 * * *" #10 PM
+
+    
 
 jobs:
   run-tailscale:
