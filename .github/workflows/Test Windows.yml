@@ -1,4 +1,4 @@
-name: Windows-RDP-Test
+name: Windows-RDP-With-Apps
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 jobs:
   secure-rdp:
     runs-on: windows-latest
-    timeout-minutes: 4320   # 72 hours (max GitHub allows)
+    timeout-minutes: 4320   # 72 hours
 
     steps:
       - name: Configure Core RDP Settings
@@ -41,34 +41,26 @@ jobs:
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
           
           echo "RDP_CREDS=User: $username | Password: $password" >> $env:GITHUB_ENV
-          
-          if (-not (Get-LocalUser -Name $username)) {
-              Write-Error "User creation failed"
-              exit 1
-          }
 
-      - name: Install Latest Tailscale
+      - name: Install Tailscale (Latest)
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale-latest.msi"
-          
+          $installerPath = "$env:TEMP\tailscale.msi"
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath -UseBasicParsing
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
 
-      - name: Establish Tailscale Connection with Subnet & Exit Node
+      - name: Establish Tailscale Connection with Subnet (Exit node optional)
         run: |
-          # Connect with pre-auth key, advertise subnet and enable exit node
           $authKey = "${{ secrets.TAILSCALE_PREAUTHKEY }}"
           $hostname = "gh-runner-$env:GITHUB_RUN_ID"
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
-              --authkey=$authKey `
-              --hostname=$hostname `
-              --advertise-routes=10.0.0.0/16 `
-              --advertise-exit-node `
-              --accept-routes
 
-          # Wait for Tailscale IP
+          # 🚨 Exit node is commented to avoid RDP drop. Uncomment if you want.
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$authKey --hostname=$hostname `
+              --advertise-routes=10.0.0.0/16 --accept-routes
+              # --advertise-exit-node
+
+          # Get Tailscale IP
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 10) {
@@ -76,24 +68,19 @@ jobs:
               Start-Sleep -Seconds 5
               $retries++
           }
-
           if (-not $tsIP) {
               Write-Error "Tailscale IP not assigned. Exiting."
               exit 1
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Preinstall Brave Browser via Script
+      - name: Run Custom Apps Installer (your script)
         run: |
-          Write-Host "Deploying Brave Browser via custom script..."
-          try {
-              Invoke-WebRequest "https://gitlab.com/Shahzaib-YT/enigmano-windows-11-with-sound/-/raw/main/Brave-Browser.ps1" -OutFile "$env:TEMP\Brave-Browser.ps1" -UseBasicParsing
-              & "$env:TEMP\Brave-Browser.ps1"
-              Write-Host "Brave Browser deployed successfully!"
-          } catch {
-              Write-Error "Brave-Browser deployment failed: $_"
-              exit 1
-          }
+          Write-Host "Downloading and running Windows-apps-by-surya.ps1..."
+          $scriptUrl = "https://raw.githubusercontent.com/surya123-s/TestVPN/refs/heads/Downloads/Windows-apps-by-surya.ps1"
+          $localPath = "$env:TEMP\Windows-apps-by-surya.ps1"
+          Invoke-WebRequest -Uri $scriptUrl -OutFile $localPath -UseBasicParsing
+          powershell -ExecutionPolicy Bypass -File $localPath
 
       - name: Verify RDP Accessibility
         run: |
@@ -111,7 +98,7 @@ jobs:
           Write-Host "Address: $env:TAILSCALE_IP"
           Write-Host "Username: rdpuser"
           Write-Host "Password: Cyber@12345RDP"
-          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:rdpuser /p:Cyber@12345RDP /f /clipboard /sound "
+          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:rdpuser /p:Cyber@12345RDP /f /clipboard /sound"
           Write-Host "==================`n"
           
           while ($true) {
