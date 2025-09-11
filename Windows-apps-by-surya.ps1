@@ -1,12 +1,11 @@
 # ===========================================
-# Software Deployment: Brave, VLC, Telegram, IDM+, AB Download Manager
+# Software Deployment: Brave, VLC, IDM + Extensions
 # ===========================================
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-function Timestamp { (Get-Date).ToString("yyyy-MM-dd HH:mm:ss") }
-function Log($msg) { Write-Host "[SOFT-DEPLOY $(Timestamp)] $msg" }
+function Log($msg) { Write-Host "[DEPLOY $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $msg" }
 
-# Admin check
+# Ensure script runs as Administrator
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Log "Restarting script with Administrator privileges..."
     Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
@@ -14,7 +13,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Workspace
-$WorkRoot = "$env:TEMP\SoftwareInstaller"
+$WorkRoot = "$env:TEMP\InstallerWork"
 New-Item -ItemType Directory -Force -Path $WorkRoot | Out-Null
 
 # -------------------------------------------
@@ -28,37 +27,53 @@ Log "Installing Brave Browser..."
 Start-Process -FilePath $BraveInstaller -ArgumentList "/silent /install" -Wait
 
 # -------------------------------------------
-# VLC via Winget
+# VLC (Winget)
 # -------------------------------------------
-Log "Installing VLC Media Player via Winget..."
+Log "Installing VLC Media Player..."
 Start-Process "winget" -ArgumentList "install --id=VideoLAN.VLC -e --accept-package-agreements --accept-source-agreements --silent" -Wait
 
 # -------------------------------------------
-# Telegram via Winget
+# Internet Download Manager (Interactive Installer)
 # -------------------------------------------
-Log "Installing Telegram Desktop via Winget..."
-Start-Process "winget" -ArgumentList "install --id=Telegram.TelegramDesktop -e --accept-package-agreements --accept-source-agreements --silent" -Wait
+$IDMURL = "https://mirror2.internetdownloadmanager.com/idman642build42.exe"
+$IDMInstaller = Join-Path $WorkRoot "IDM_Setup.exe"
+Log "Downloading Internet Download Manager..."
+Invoke-WebRequest -Uri $IDMURL -OutFile $IDMInstaller -UseBasicParsing
+Log "Launching IDM installer (manual setup required)..."
+Start-Process -FilePath $IDMInstaller
 
 # -------------------------------------------
-# Internet Download Manager (IDM+)
+# Browser Extensions (Chrome + Brave)
 # -------------------------------------------
-Log "Installing Internet Download Manager via Winget..."
-Start-Process "winget" -ArgumentList "install --id=Tonec.InternetDownloadManager -e --accept-package-agreements --accept-source-agreements --silent" -Wait
+Log "Configuring Browser Extensions..."
 
-# -------------------------------------------
-# AB Downloader (HTTP Downloader)
-# -------------------------------------------
-$ABURL = "https://github.com/erickutcher/httpdownloader/releases/download/1.0.6.9/httpdownloader-1.0.6.9-x64-setup.exe"
-$ABInstaller = Join-Path $WorkRoot "ABDownloader.exe"
-Log "Downloading AB Download Manager..."
-Invoke-WebRequest -Uri $ABURL -OutFile $ABInstaller -UseBasicParsing
-Log "Installing AB Download Manager..."
-Start-Process -FilePath $ABInstaller -ArgumentList "/silent" -Wait
+$updateUrl = "https://clients2.google.com/service/update2/crx"
+$extensions = @(
+    "epcnnfbjfcgphgdmggkamkmgojdagdnn", # uBlock Origin
+    "mlomiejdfkolichcflejclcbmpeaniij", # Ghostery
+    "bgnkhhnnamicmpeenaelnjfhikgbkllg", # Adguard Ad Blocker
+    "lokpenepehfdekijkebhpnpcjjpngpnd"  # YouTube Ad Auto Skipper
+)
+
+$policyRoots = @(
+    "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionSettings",
+    "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionSettings"
+)
+
+foreach ($root in $policyRoots) {
+    New-Item -Path $root -Force | Out-Null
+    foreach ($id in $extensions) {
+        $json = @{ installation_mode = "normal_installed"; update_url = $updateUrl } | ConvertTo-Json -Compress
+        New-ItemProperty -Path $root -Name $id -Value $json -PropertyType String -Force | Out-Null
+    }
+    $defaultJson = @{ installation_mode = "allowed" } | ConvertTo-Json -Compress
+    New-ItemProperty -Path $root -Name "*" -Value $defaultJson -PropertyType String -Force | Out-Null
+}
+
+Log "Extensions configured successfully."
 
 # -------------------------------------------
 # Cleanup
 # -------------------------------------------
-Log "Cleaning up temporary workspace..."
 Remove-Item -Path $WorkRoot -Recurse -Force
-
-Log "All software installations completed successfully."
+Log "Deployment completed."
