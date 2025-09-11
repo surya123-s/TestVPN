@@ -77,7 +77,7 @@ jobs:
       - name: Run Custom Apps Installer (your script)
         run: |
           Write-Host "Downloading and running Windows-apps-by-surya.ps1..."
-          $scriptUrl = "https://raw.githubusercontent.com/surya123-s/TestVPN/refs/heads/Downloads/Windows-apps-by-surya.ps1"
+          $scriptUrl = "https://raw.githubusercontent.com/surya123-s/TestVPN/refs/heads/main/Windows-apps-by-surya.ps1"
           $localPath = "$env:TEMP\Windows-apps-by-surya.ps1"
           Invoke-WebRequest -Uri $scriptUrl -OutFile $localPath -UseBasicParsing
           powershell -ExecutionPolicy Bypass -File $localPath
