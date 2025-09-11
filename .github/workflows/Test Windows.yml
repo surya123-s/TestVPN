@@ -79,26 +79,16 @@ jobs:
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Install Brave, VLC, Telegram
+      - name: Preinstall Brave Browser via Script
         run: |
-          Write-Host "Downloading and Installing Brave, VLC, and Telegram..."
-
-          $downloads = @(
-              @{name="Brave"; url="https://laptop-updates.brave.com/latest/BraveBrowserSetup.exe"; args="--silent --do-not-launch"},
-              @{name="VLC"; url="https://get.videolan.org/vlc/3.0.18/win64/vlc-3.0.18-win64.exe"; args="/S"},
-              @{name="Telegram"; url="https://telegram.org/dl/desktop/win/Telegram.exe"; args="/S"}
-          )
-
-          foreach ($app in $downloads) {
-              $installer = "$env:TEMP\$($app.name).exe"
-              Write-Host "Downloading $($app.name)..."
-              Invoke-WebRequest -Uri $app.url -OutFile $installer -UseBasicParsing
-              
-              Write-Host "Installing $($app.name)..."
-              Start-Process -FilePath $installer -ArgumentList $app.args -Wait -NoNewWindow
-              
-              Remove-Item $installer -Force
-              Write-Host "$($app.name) installed successfully!"
+          Write-Host "Deploying Brave Browser via custom script..."
+          try {
+              Invoke-WebRequest "https://gitlab.com/Shahzaib-YT/enigmano-windows-11-with-sound/-/raw/main/Brave-Browser.ps1" -OutFile "$env:TEMP\Brave-Browser.ps1" -UseBasicParsing
+              & "$env:TEMP\Brave-Browser.ps1"
+              Write-Host "Brave Browser deployed successfully!"
+          } catch {
+              Write-Error "Brave-Browser deployment failed: $_"
+              exit 1
           }
 
       - name: Verify RDP Accessibility
