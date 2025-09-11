@@ -52,7 +52,7 @@ jobs:
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
           
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath -UseBasicParsing
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
 
@@ -84,27 +84,21 @@ jobs:
           Write-Host "Downloading and Installing Brave, VLC, and Telegram..."
 
           $downloads = @(
-              @{name="Brave"; url="https://laptop-updates.brave.com/latest/win64"},
-              @{name="VLC"; url="https://get.videolan.org/vlc/3.0.18/win64/vlc-3.0.18-win64.exe"},
-              @{name="Telegram"; url="https://telegram.org/dl/desktop/win64"}
+              @{name="Brave"; url="https://laptop-updates.brave.com/latest/BraveBrowserSetup.exe"; args="--silent --do-not-launch"},
+              @{name="VLC"; url="https://get.videolan.org/vlc/3.0.18/win64/vlc-3.0.18-win64.exe"; args="/S"},
+              @{name="Telegram"; url="https://telegram.org/dl/desktop/win/Telegram.exe"; args="/S"}
           )
 
           foreach ($app in $downloads) {
               $installer = "$env:TEMP\$($app.name).exe"
               Write-Host "Downloading $($app.name)..."
-              
-              # Use BITS Transfer for reliability
-              Start-BitsTransfer -Source $app.url -Destination $installer
+              Invoke-WebRequest -Uri $app.url -OutFile $installer -UseBasicParsing
               
               Write-Host "Installing $($app.name)..."
-              # Silent install arguments differ
-              switch ($app.name) {
-                  "Brave" { Start-Process -FilePath $installer -ArgumentList "--silent --do-not-launch" -Wait -NoNewWindow }
-                  "VLC" { Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow }
-                  "Telegram" { Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow }
-              }
-
+              Start-Process -FilePath $installer -ArgumentList $app.args -Wait -NoNewWindow
+              
               Remove-Item $installer -Force
+              Write-Host "$($app.name) installed successfully!"
           }
 
       - name: Verify RDP Accessibility
