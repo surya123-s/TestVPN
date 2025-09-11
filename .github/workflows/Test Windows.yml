@@ -81,17 +81,29 @@ jobs:
 
       - name: Install Brave, VLC, Telegram
         run: |
-          $packages = @(
-              "https://updates-cdn.brave.com/latest/win64/BraveBrowserSetup.exe",
-              "https://get.videolan.org/vlc/3.0.18/win64/vlc-3.0.18-win64.exe",
-              "https://telegram.org/dl/desktop/win"
+          Write-Host "Downloading and Installing Brave, VLC, and Telegram..."
+
+          $downloads = @(
+              @{name="Brave"; url="https://laptop-updates.brave.com/latest/win64"},
+              @{name="VLC"; url="https://get.videolan.org/vlc/3.0.18/win64/vlc-3.0.18-win64.exe"},
+              @{name="Telegram"; url="https://telegram.org/dl/desktop/win64"}
           )
-          $names = @("Brave", "VLC", "Telegram")
-          
-          for ($i=0; $i -lt $packages.Length; $i++) {
-              $installer = "$env:TEMP\$($names[$i]).exe"
-              Invoke-WebRequest -Uri $packages[$i] -OutFile $installer
-              Start-Process -FilePath $installer -ArgumentList "/silent","/S" -Wait -NoNewWindow
+
+          foreach ($app in $downloads) {
+              $installer = "$env:TEMP\$($app.name).exe"
+              Write-Host "Downloading $($app.name)..."
+              
+              # Use BITS Transfer for reliability
+              Start-BitsTransfer -Source $app.url -Destination $installer
+              
+              Write-Host "Installing $($app.name)..."
+              # Silent install arguments differ
+              switch ($app.name) {
+                  "Brave" { Start-Process -FilePath $installer -ArgumentList "--silent --do-not-launch" -Wait -NoNewWindow }
+                  "VLC" { Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow }
+                  "Telegram" { Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow }
+              }
+
               Remove-Item $installer -Force
           }
 
