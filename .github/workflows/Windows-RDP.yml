@@ -1,3 +1,9 @@
+#with audio support , just install xrdp in your linux terminal
+
+#and use this command xfreerdp /v:100.85.82.108 /u:rdpuser /p:Cyber@12345RDP /f /clipboard /sound
+
+#now you can listion rdp audio to your local machine
+
 name: Windows-RDP
 
 on:
@@ -60,7 +66,7 @@ jobs:
 
       - name: Establish Tailscale Connection
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_PREAUTHKEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
           
           $tsIP = $null
           $retries = 0
