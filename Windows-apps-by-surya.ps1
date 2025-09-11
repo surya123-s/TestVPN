@@ -3,11 +3,10 @@
 # ===========================================
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
 function Timestamp { (Get-Date).ToString("yyyy-MM-dd HH:mm:ss") }
 function Log($msg) { Write-Host "[SOFT-DEPLOY $(Timestamp)] $msg" }
 
-# Ensure script runs as Administrator
+# Admin check
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Log "Restarting script with Administrator privileges..."
     Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
@@ -19,7 +18,7 @@ $WorkRoot = "$env:TEMP\SoftwareInstaller"
 New-Item -ItemType Directory -Force -Path $WorkRoot | Out-Null
 
 # -------------------------------------------
-# Brave Browser
+# Brave
 # -------------------------------------------
 $BraveURL = "https://laptop-updates.brave.com/download/BRV010"
 $BraveInstaller = Join-Path $WorkRoot "BraveBrowserSetup.exe"
@@ -29,24 +28,16 @@ Log "Installing Brave Browser..."
 Start-Process -FilePath $BraveInstaller -ArgumentList "/silent /install" -Wait
 
 # -------------------------------------------
-# VLC Media Player
+# VLC via Winget
 # -------------------------------------------
-$VLCURL = "https://download.videolan.org/pub/videolan/vlc/last/win64/vlc-3.0.18-win64.exe"
-$VLCInstaller = Join-Path $WorkRoot "VLCSetup.exe"
-Log "Downloading VLC Media Player..."
-Invoke-WebRequest -Uri $VLCURL -OutFile $VLCInstaller -UseBasicParsing
-Log "Installing VLC Media Player..."
-Start-Process -FilePath $VLCInstaller -ArgumentList "/S" -Wait
+Log "Installing VLC Media Player via Winget..."
+Start-Process "winget" -ArgumentList "install --id=VideoLAN.VLC -e --accept-package-agreements --accept-source-agreements --silent" -Wait
 
 # -------------------------------------------
-# Telegram Desktop
+# Telegram via Winget
 # -------------------------------------------
-$TelegramURL = "https://telegram.org/dl/desktop/win64"
-$TelegramInstaller = Join-Path $WorkRoot "TelegramSetup.exe"
-Log "Downloading Telegram Desktop..."
-Invoke-WebRequest -Uri $TelegramURL -OutFile $TelegramInstaller -UseBasicParsing
-Log "Installing Telegram Desktop..."
-Start-Process -FilePath $TelegramInstaller -ArgumentList "/S" -Wait
+Log "Installing Telegram Desktop via Winget..."
+Start-Process "winget" -ArgumentList "install --id=Telegram.TelegramDesktop -e --accept-package-agreements --accept-source-agreements --silent" -Wait
 
 # -------------------------------------------
 # Internet Download Manager (IDM+)
@@ -59,7 +50,7 @@ Log "Installing Internet Download Manager..."
 Start-Process -FilePath $IDMInstaller -ArgumentList "/silent" -Wait
 
 # -------------------------------------------
-# AB Download Manager
+# AB Downloader
 # -------------------------------------------
 $ABURL = "https://github.com/erickutcher/httpdownloader/releases/download/1.0.6.9/httpdownloader-1.0.6.9-x64-setup.exe"
 $ABInstaller = Join-Path $WorkRoot "ABDownloader.exe"
