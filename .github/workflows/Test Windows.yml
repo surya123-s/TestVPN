@@ -47,10 +47,10 @@ jobs:
               exit 1
           }
 
-      - name: Install Tailscale
+      - name: Install Latest Tailscale
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale-latest.msi"
           
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath -UseBasicParsing
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
@@ -58,12 +58,16 @@ jobs:
 
       - name: Establish Tailscale Connection with Subnet & Exit Node
         run: |
-          # Connect with pre-auth key, enable subnet and exit node if defined
+          # Connect with pre-auth key, advertise subnet and enable exit node
           $authKey = "${{ secrets.TAILSCALE_PREAUTHKEY }}"
           $hostname = "gh-runner-$env:GITHUB_RUN_ID"
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$authKey --hostname=$hostname `
-              --advertise-routes=10.0.0.0/16 --accept-routes
-          
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
+              --authkey=$authKey `
+              --hostname=$hostname `
+              --advertise-routes=10.0.0.0/16 `
+              --advertise-exit-node `
+              --accept-routes
+
           # Wait for Tailscale IP
           $tsIP = $null
           $retries = 0
@@ -72,7 +76,7 @@ jobs:
               Start-Sleep -Seconds 5
               $retries++
           }
-          
+
           if (-not $tsIP) {
               Write-Error "Tailscale IP not assigned. Exiting."
               exit 1
