@@ -2,7 +2,6 @@
 # Software Deployment: Brave, VLC, Telegram, IDM+, AB Download Manager
 # ===========================================
 
-# Enforce TLS 1.2 for secure downloads
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 function Timestamp { (Get-Date).ToString("yyyy-MM-dd HH:mm:ss") }
@@ -15,7 +14,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     exit
 }
 
-# Workspace for temporary downloads
+# Workspace
 $WorkRoot = "$env:TEMP\SoftwareInstaller"
 New-Item -ItemType Directory -Force -Path $WorkRoot | Out-Null
 
@@ -32,7 +31,7 @@ Start-Process -FilePath $BraveInstaller -ArgumentList "/silent /install" -Wait
 # -------------------------------------------
 # VLC Media Player
 # -------------------------------------------
-$VLCURL = "https://get.videolan.org/vlc/3.0.18/win64/vlc-3.0.18-win64.exe"
+$VLCURL = "https://download.videolan.org/pub/videolan/vlc/last/win64/vlc-3.0.18-win64.exe"
 $VLCInstaller = Join-Path $WorkRoot "VLCSetup.exe"
 Log "Downloading VLC Media Player..."
 Invoke-WebRequest -Uri $VLCURL -OutFile $VLCInstaller -UseBasicParsing
@@ -59,15 +58,6 @@ Invoke-WebRequest -Uri $IDMURL -OutFile $IDMInstaller -UseBasicParsing
 Log "Installing Internet Download Manager..."
 Start-Process -FilePath $IDMInstaller -ArgumentList "/silent" -Wait
 
-# Add IDM Chrome/Brave Extension
-$IDMExtPath = "$env:ProgramFiles (x86)\Internet Download Manager\IDMGCExt.crx"
-if (Test-Path $IDMExtPath) {
-    Log "Installing IDM extension to Brave..."
-    $BraveExtDir = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Extensions"
-    New-Item -ItemType Directory -Force -Path $BraveExtDir | Out-Null
-    Copy-Item $IDMExtPath -Destination $BraveExtDir
-}
-
 # -------------------------------------------
 # AB Download Manager
 # -------------------------------------------
@@ -77,14 +67,6 @@ Log "Downloading AB Download Manager..."
 Invoke-WebRequest -Uri $ABURL -OutFile $ABInstaller -UseBasicParsing
 Log "Installing AB Download Manager..."
 Start-Process -FilePath $ABInstaller -ArgumentList "/silent" -Wait
-
-# Add AB Downloader Extension (if available)
-# NOTE: AB Downloader has a Chrome extension "Chrono Download Manager" style fork
-# You can force install via Chrome Web Store ID
-$ABExtID = "lmhkpmbekcpmknklioeibfkpmmfibljd"  # Example placeholder ID
-$PolicyKey = "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionInstallForcelist"
-New-Item -Path $PolicyKey -Force | Out-Null
-Set-ItemProperty -Path $PolicyKey -Name "1" -Value "$ABExtID;https://clients2.google.com/service/update2/crx"
 
 # -------------------------------------------
 # Cleanup
