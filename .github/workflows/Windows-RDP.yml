@@ -4,7 +4,7 @@
 
 #now you can listion rdp audio to your local machine
 
-name: Windows-RDP
+name: Windows-RDP-New
 
 on:
   workflow_dispatch:
