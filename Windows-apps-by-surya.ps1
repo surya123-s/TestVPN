@@ -42,15 +42,11 @@ Start-Process "winget" -ArgumentList "install --id=Telegram.TelegramDesktop -e -
 # -------------------------------------------
 # Internet Download Manager (IDM+)
 # -------------------------------------------
-$IDMURL = "https://mirror2.internetdownloadmanager.com/idman642build11.exe"
-$IDMInstaller = Join-Path $WorkRoot "IDMSetup.exe"
-Log "Downloading Internet Download Manager..."
-Invoke-WebRequest -Uri $IDMURL -OutFile $IDMInstaller -UseBasicParsing
-Log "Installing Internet Download Manager..."
-Start-Process -FilePath $IDMInstaller -ArgumentList "/silent" -Wait
+Log "Installing Internet Download Manager via Winget..."
+Start-Process "winget" -ArgumentList "install --id=Tonec.InternetDownloadManager -e --accept-package-agreements --accept-source-agreements --silent" -Wait
 
 # -------------------------------------------
-# AB Downloader
+# AB Downloader (HTTP Downloader)
 # -------------------------------------------
 $ABURL = "https://github.com/erickutcher/httpdownloader/releases/download/1.0.6.9/httpdownloader-1.0.6.9-x64-setup.exe"
 $ABInstaller = Join-Path $WorkRoot "ABDownloader.exe"
