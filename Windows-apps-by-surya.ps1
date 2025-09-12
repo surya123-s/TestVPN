@@ -27,14 +27,10 @@ Log "Installing Brave Browser..."
 Start-Process -FilePath $BraveInstaller -ArgumentList "/silent /install" -Wait
 
 # -------------------------------------------
-# Vivaldi
+# Vivaldi (Winget)
 # -------------------------------------------
-$VivaldiURL = "https://downloads.vivaldi.com/stable/Vivaldi.6.8.3381.52.x64.exe"
-$VivaldiInstaller = Join-Path $WorkRoot "VivaldiSetup.exe"
-Log "Downloading Vivaldi Browser..."
-Invoke-WebRequest -Uri $VivaldiURL -OutFile $VivaldiInstaller -UseBasicParsing
 Log "Installing Vivaldi Browser..."
-Start-Process -FilePath $VivaldiInstaller -ArgumentList "/silent /install" -Wait
+Start-Process "winget" -ArgumentList "install --id=VivaldiTechnologies.Vivaldi -e --accept-package-agreements --accept-source-agreements --silent" -Wait
 
 # -------------------------------------------
 # VLC (Winget)
@@ -50,6 +46,7 @@ Log "Configuring Browser Extensions..."
 $updateUrl = "https://clients2.google.com/service/update2/crx"
 $extensions = @(
     "epcnnfbjfcgphgdmggkamkmgojdagdnn", # uBlock Origin
+    "mlomiejdfkolichcflejclcbmpeaniij", # Ghostery
     "bgnkhhnnamicmpeenaelnjfhikgbkllg"  # Adguard Ad Blocker
 )
 
