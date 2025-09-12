@@ -1,5 +1,5 @@
 # ===========================================
-# Software Deployment: Brave, VLC + Extensions
+# Software Deployment: Brave, Vivaldi, VLC + Extensions
 # ===========================================
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -27,26 +27,36 @@ Log "Installing Brave Browser..."
 Start-Process -FilePath $BraveInstaller -ArgumentList "/silent /install" -Wait
 
 # -------------------------------------------
+# Vivaldi
+# -------------------------------------------
+$VivaldiURL = "https://downloads.vivaldi.com/stable/Vivaldi.6.8.3381.52.x64.exe"
+$VivaldiInstaller = Join-Path $WorkRoot "VivaldiSetup.exe"
+Log "Downloading Vivaldi Browser..."
+Invoke-WebRequest -Uri $VivaldiURL -OutFile $VivaldiInstaller -UseBasicParsing
+Log "Installing Vivaldi Browser..."
+Start-Process -FilePath $VivaldiInstaller -ArgumentList "/silent /install" -Wait
+
+# -------------------------------------------
 # VLC (Winget)
 # -------------------------------------------
 Log "Installing VLC Media Player..."
 Start-Process "winget" -ArgumentList "install --id=VideoLAN.VLC -e --accept-package-agreements --accept-source-agreements --silent" -Wait
 
 # -------------------------------------------
-# Browser Extensions (Chrome + Brave)
+# Browser Extensions (Chrome + Brave + Vivaldi)
 # -------------------------------------------
 Log "Configuring Browser Extensions..."
 
 $updateUrl = "https://clients2.google.com/service/update2/crx"
 $extensions = @(
     "epcnnfbjfcgphgdmggkamkmgojdagdnn", # uBlock Origin
-    "mlomiejdfkolichcflejclcbmpeaniij", # Ghostery
     "bgnkhhnnamicmpeenaelnjfhikgbkllg"  # Adguard Ad Blocker
 )
 
 $policyRoots = @(
     "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionSettings",
-    "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionSettings"
+    "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionSettings",
+    "HKLM:\SOFTWARE\Policies\Vivaldi\ExtensionSettings"
 )
 
 foreach ($root in $policyRoots) {
