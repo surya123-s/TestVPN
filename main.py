@@ -1,14 +1,13 @@
 #!/usr/bin/env python
-# main.py
+# main.py (Stable Version)
 """
 Telegram Video Leech Bot (Pyrogram + yt-dlp + ffmpeg)
-- Resolutions buttons (unique)
+- Unique resolutions only
 - /start, /help, /leech <url>
-- Safe callback_data via token (no long URLs in callback)
-- Download & upload progress updates (throttled)
-- Remux to streamable MP4, fallback re-encode if needed
-- Split > PART_MAX_BYTES into streamable parts using ffmpeg/time-based splitting
-- Robust error handling around yt-dlp extractor failures
+- TG_CHAT logs
+- File split at 1.95GB max
+- Streamable MP4 output (remux → re-encode fallback)
+- Progress updates every 9s
 """
 
 import os
@@ -20,7 +19,6 @@ import math
 import time
 import tempfile
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -29,50 +27,44 @@ import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery
 
-# ---------- basic logging ----------
+# ---------- logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger("leech-bot")
 
 # ---------- Python version guard ----------
 if sys.version_info < (3, 10):
-    log.critical("Python 3.10+ is required. Current version: %s", sys.version.split()[0])
-    raise SystemExit("Python 3.10+ required. Update your runner to Python 3.10 or newer.")
+    raise SystemExit("Python 3.10+ required. Current version: %s" % sys.version.split()[0])
 
-# -----------------------
-# Configuration (env)
-# -----------------------
+# ---------- yt-dlp auto update ----------
+async def ensure_ytdlp_latest():
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "yt_dlp", "-U",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        await proc.communicate()
+    except Exception as e:
+        log.warning("yt-dlp auto-update failed: %s", e)
+
+# ---------- env config ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH")
-TG_CHAT = int(os.getenv("TG_CHAT", "0"))  # Chat ID for logs
+TG_CHAT = int(os.getenv("TG_CHAT", "0"))
 ALLOWED_USERS = [s.strip() for s in os.getenv("ALLOWED_USERS", "").split(",") if s.strip()]
 
-# maximum part size in bytes (default 1.95 GiB)
 PART_MAX_BYTES = int(float(os.getenv("PART_MAX_GB", "1.95")) * (1024 ** 3))
-# progress update interval seconds (8-10s requested) -> default 9s
 PROGRESS_UPDATE_INTERVAL = int(os.getenv("PROGRESS_UPDATE_INTERVAL", "9"))
 
-# basic environment checks
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN not set")
-if not API_ID or not API_HASH:
-    raise RuntimeError("API_ID / API_HASH not set")
-if not TG_CHAT:
-    raise RuntimeError("TG_CHAT not set (chat id where logs are sent)")
+if not BOT_TOKEN or not API_ID or not API_HASH or not TG_CHAT:
+    raise RuntimeError("Missing BOT_TOKEN/API_ID/API_HASH/TG_CHAT in env")
 
-# -----------------------
-# Pyrogram client
-# -----------------------
+# ---------- pyrogram client ----------
 app = Client("leech-bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# -----------------------
-# Utilities
-# -----------------------
+# ---------- helpers ----------
 def is_allowed(user_id: int) -> bool:
-    # If ALLOWED_USERS is empty, allow only TG_CHAT sender (admin) OR allow all (depending on preference)
-    if not ALLOWED_USERS:
-        return True
-    return str(user_id) in ALLOWED_USERS or str(user_id) == str(TG_CHAT)
+    return not ALLOWED_USERS or str(user_id) in ALLOWED_USERS or str(user_id) == str(TG_CHAT)
 
 async def send_log(text: str):
     try:
@@ -81,400 +73,145 @@ async def send_log(text: str):
         log.exception("Failed to send log to TG_CHAT")
 
 def unique_formats_by_resolution(formats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Return one format per resolution (height). Prefer best candidate per height using filesize or tbr.
-    """
     by_height: Dict[int, Dict[str, Any]] = {}
     for f in formats:
-        # skip audio-only
         if f.get("vcodec") == "none":
             continue
-        height = f.get("height") or 0
-        cur = by_height.get(height)
+        h = f.get("height") or 0
+        cur = by_height.get(h)
         score = (f.get("filesize") or 0) + int((f.get("tbr") or 0) * 1024)
-        cur_score = 0
-        if cur:
-            cur_score = (cur.get("filesize") or 0) + int((cur.get("tbr") or 0) * 1024)
+        cur_score = (cur.get("filesize") or 0) + int((cur.get("tbr") or 0) * 1024) if cur else 0
         if not cur or score > cur_score:
-            by_height[height] = f
+            by_height[h] = f
     return [by_height[h] for h in sorted(by_height.keys(), reverse=True)]
 
-# -----------------------
-# Progress notifier
-# -----------------------
 class ProgressNotifier:
-    def __init__(self, edit_coroutine, min_interval: int = PROGRESS_UPDATE_INTERVAL):
-        self.edit_coroutine = edit_coroutine
-        self.min_interval = min_interval
-        self._last_update = 0
+    def __init__(self, edit_cb, interval=PROGRESS_UPDATE_INTERVAL):
+        self.cb = edit_cb
+        self.interval = interval
+        self._last = 0
 
-    async def maybe_update(self, text: str, force: bool = False):
+    async def maybe_update(self, text: str, force=False):
         now = time.monotonic()
-        if force or (now - self._last_update >= self.min_interval):
+        if force or now - self._last >= self.interval:
             try:
-                await self.edit_coroutine(text)
-            except Exception:
-                # ignore update errors
-                log.exception("Failed to update progress message")
-            self._last_update = now
-
-# -----------------------
-# Subprocess helpers
-# -----------------------
-async def run_subprocess(cmd: List[str], cwd: Optional[str] = None, timeout: Optional[int] = None):
-    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=cwd)
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        raise
-    return proc.returncode, stdout.decode(errors="ignore"), stderr.decode(errors="ignore")
-
-async def remux_to_streamable_mp4(src: Path, dst: Path) -> None:
-    """Try copy remux to mp4 with faststart"""
-    cmd = ["ffmpeg", "-y", "-i", str(src), "-c", "copy", "-movflags", "+faststart", str(dst)]
-    code, out, err = await run_subprocess(cmd)
-    if code != 0:
-        raise RuntimeError(f"ffmpeg remux failed: {err}")
-
-async def reencode_to_mp4(src: Path, dst: Path) -> None:
-    """Fallback: re-encode to h264+aac mp4 (larger CPU/time)."""
-    cmd = ["ffmpeg", "-y", "-i", str(src), "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(dst)]
-    code, out, err = await run_subprocess(cmd)
-    if code != 0:
-        raise RuntimeError(f"ffmpeg re-encode failed: {err}")
-
-async def get_duration_seconds(path: Path) -> float:
-    cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)]
-    code, out, err = await run_subprocess(cmd)
-    if code != 0 or not out.strip():
-        return 0.0
-    try:
-        return float(out.strip())
-    except Exception:
-        return 0.0
-
-async def split_mp4_by_time(src: Path, out_dir: Path, max_bytes: int = PART_MAX_BYTES) -> List[Path]:
-    """Split src into streamable MP4 parts by time so each part <= max_bytes"""
-    size = src.stat().st_size
-    if size <= max_bytes:
-        return [src]
-
-    duration = await get_duration_seconds(src)
-    if duration <= 0:
-        raise RuntimeError("Cannot determine duration for splitting; ffprobe failed.")
-
-    bytes_per_sec = size / duration
-    seg_secs = max(5, int(math.floor(max_bytes / bytes_per_sec)))
-    if seg_secs <= 0:
-        seg_secs = 10
-
-    parts: List[Path] = []
-    total_secs = int(math.ceil(duration))
-    idx = 0
-    for start in range(0, total_secs, seg_secs):
-        idx += 1
-        out_file = out_dir / f"{src.stem}.part{idx:02d}.mp4"
-        cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", str(src), "-t", str(seg_secs), "-c", "copy", "-movflags", "+faststart", str(out_file)]
-        code, out, err = await run_subprocess(cmd)
-        if code != 0:
-            raise RuntimeError(f"ffmpeg split failed at {start}s: {err}")
-        parts.append(out_file)
-
-    for p in parts:
-        if p.stat().st_size > max_bytes + 1024 * 1024:
-            raise RuntimeError(f"Part too large after split: {p} ({p.stat().st_size})")
-    return parts
-
-# -----------------------
-# In-memory session store
-# -----------------------
-# mapping token -> {url, info(optional), requested_by}
-SESSIONS: Dict[str, Dict[str, Any]] = {}
-
-# -----------------------
-# Command handlers
-# -----------------------
-@app.on_message(filters.command("start") & filters.private)
-async def cmd_start(client: Client, message: Message):
-    if not is_allowed(message.from_user.id):
-        await message.reply("⛔ Access Denied")
-        return
-    await message.reply("✅ Bot running.\nSend a video URL or use /leech <url>.\nUse /help for details.")
-
-@app.on_message(filters.command("help") & filters.private)
-async def cmd_help(client: Client, message: Message):
-    help_text = (
-        "Usage:\n"
-        "/start - check bot\n"
-        "/help - this message\n"
-        "/leech <url> - start leech (you will be prompted to pick resolution)\n\n"
-        "Or just send a video URL in a private chat and pick resolution from buttons.\n"
-        "Only allowed users can use the bot (ALLOWED_USERS)."
-    )
-    await message.reply(help_text)
-
-@app.on_message(filters.command("leech") & filters.private)
-async def cmd_leech(client: Client, message: Message):
-    if not is_allowed(message.from_user.id):
-        await message.reply("⛔ Access Denied")
-        return
-    if len(message.command) < 2:
-        await message.reply("Usage: /leech <url>")
-        return
-    url = message.text.split(None, 1)[1].strip()
-    # reuse the same flow as on_text by delegating
-    await handle_incoming_url(client, message, url)
-
-@app.on_message(filters.text & filters.private)
-async def on_text(client: Client, message: Message):
-    if not is_allowed(message.from_user.id):
-        await message.reply("⛔ Access Denied")
-        return
-    url = message.text.strip()
-    await handle_incoming_url(client, message, url)
-
-async def handle_incoming_url(client: Client, message: Message, url: str):
-    status = await message.reply_text("🔎 Fetching available formats, please wait...")
-    try:
-        # fetch formats (yt-dlp in thread)
-        def fetch():
-            opts = {"quiet": True, "skip_download": True, "no_warnings": True}
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(url, download=False)
-        loop = asyncio.get_event_loop()
-        try:
-            info = await loop.run_in_executor(None, fetch)
-        except Exception as e:
-            await status.edit_text(f"❌ Failed to fetch formats: {e}")
-            await send_log(f"Format fetch failed for {url}: {e}")
-            return
-
-        formats = info.get("formats", []) or []
-        video_formats = [f for f in formats if f.get("vcodec") != "none"]
-        unique = unique_formats_by_resolution(video_formats)
-
-        if not unique:
-            await status.edit_text("No video formats found.")
-            return
-
-        # create token, store info
-        token = uuid.uuid4().hex
-        SESSIONS[token] = {"url": url, "info": info, "requested_by": message.from_user.id}
-
-        # build keyboard with unique resolutions (no duplicates)
-        keyboard = []
-        for f in unique:
-            height = f.get("height") or 0
-            label = f"{height}p" if height > 0 else (f.get("format_note") or "auto")
-            fmt_id = f.get("format_id")
-            cb = f"LEECH:{token}:{fmt_id}"
-            keyboard.append([InlineKeyboardButton(label, callback_data=cb)])
-        keyboard.append([InlineKeyboardButton("Cancel ❌", callback_data=f"CANCEL:{token}")])
-
-        await status.edit_text("Select resolution:", reply_markup=InlineKeyboardMarkup(keyboard))
-    except Exception as e:
-        await status.edit_text(f"❌ Error: {e}")
-        await send_log(f"Error preparing resolutions for {url}: {e}")
-
-@app.on_callback_query()
-async def on_callback(c: Client, cq: CallbackQuery):
-    await cq.answer()  # immediate ack
-    data = cq.data or ""
-    user_id = cq.from_user.id
-    if not is_allowed(user_id):
-        await cq.answer("Access denied", show_alert=True)
-        return
-
-    if data.startswith("CANCEL:"):
-        token = data.split(":", 1)[1]
-        await cq.message.edit_text("Cancelled.")
-        SESSIONS.pop(token, None)
-        return
-
-    if not data.startswith("LEECH:"):
-        await cq.answer()
-        return
-
-    # data = LEECH:<token>:<format_id>
-    try:
-        _, token, fmt_id = data.split(":", 2)
-    except Exception:
-        await cq.answer("Invalid selection", show_alert=True)
-        return
-
-    session = SESSIONS.get(token)
-    if not session:
-        await cq.answer("Session expired or invalid", show_alert=True)
-        return
-
-    url = session["url"]
-    status_msg = await cq.message.reply_text(f"Queued: {url}\nFormat: {fmt_id}")
-    # Launch background task
-    asyncio.create_task(handle_leech_pipeline(c, user_id, cq.message.chat.id, url, fmt_id, status_msg.message_id))
-
-# -----------------------
-# Core pipeline
-# -----------------------
-async def handle_leech_pipeline(client: Client, user_id: int, chat_id: int, url: str, format_id: str, status_message_id: int):
-    tmpdir = Path(tempfile.mkdtemp(prefix="leech_"))
-    try:
-        await client.send_message(chat_id, f"⏬ Starting leech for selected format `{format_id}`")
-        # edit helper
-        async def edit_status(text: str):
-            try:
-                await client.edit_message_text(chat_id=chat_id, message_id=status_message_id, text=text)
-            except Exception:
-                try:
-                    await client.send_message(chat_id, text)
-                except Exception:
-                    pass
-
-        notifier = ProgressNotifier(edit_status, PROGRESS_UPDATE_INTERVAL)
-
-        # yt-dlp download with progress hook; ensure extractor errors handled
-        last_hook_time = 0
-
-        def ytdl_hook(d):
-            nonlocal last_hook_time
-            status_text = ""
-            st = d.get("status")
-            if st == "downloading":
-                downloaded = d.get("downloaded_bytes") or 0
-                total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
-                speed = d.get("speed") or 0
-                eta = d.get("eta") or 0
-                percent = (downloaded / total * 100) if total else 0.0
-                status_text = f"⬇️ Downloading: {d.get('filename','')}\n{percent:.2f}% • {downloaded//1024} KB / {total//1024 if total else 0} KB\nSpeed: {int(speed)//1024 if speed else 0} KB/s • ETA: {int(eta)}s"
-            elif st == "finished":
-                status_text = "⬇️ Download finished. Finalizing..."
-            # throttle updates
-            try:
-                if time.monotonic() - last_hook_time >= PROGRESS_UPDATE_INTERVAL:
-                    asyncio.get_event_loop().create_task(notifier.maybe_update(status_text, force=True))
-                    last_hook_time = time.monotonic()
+                await self.cb(text)
             except Exception:
                 pass
+            self._last = now
 
-        ydl_opts = {
-            "format": format_id,
-            "outtmpl": str(tmpdir / "%(title).200s.%(ext)s"),
-            "noplaylist": True,
-            "progress_hooks": [ytdl_hook],
-            "quiet": True,
-            "no_warnings": True,
-        }
+async def run_cmd(cmd: List[str]) -> (int, str, str):
+    proc = await asyncio.create_subprocess_exec(*cmd,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    out, err = await proc.communicate()
+    return proc.returncode, out.decode(errors="ignore"), err.decode(errors="ignore")
 
-        loop = asyncio.get_event_loop()
+async def remux(src: Path, dst: Path):
+    code, _, err = await run_cmd(["ffmpeg","-y","-i",str(src),"-c","copy","-movflags","+faststart",str(dst)])
+    if code != 0: raise RuntimeError(err)
 
-        def run_ydl():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                return ydl.extract_info(url, download=True)
+async def reencode(src: Path, dst: Path):
+    code, _, err = await run_cmd(["ffmpeg","-y","-i",str(src),"-c:v","libx264","-preset","veryfast",
+                                  "-crf","23","-c:a","aac","-b:a","128k","-movflags","+faststart",str(dst)])
+    if code != 0: raise RuntimeError(err)
 
-        try:
-            info = await loop.run_in_executor(None, run_ydl)
-        except yt_dlp.utils.DownloadError as e:
-            err = str(e)
-            await notifier.maybe_update(f"❌ yt-dlp download error: {err}", force=True)
-            await send_log(f"yt-dlp DownloadError for {url}: {err}")
-            return
-        except Exception as e:
-            await notifier.maybe_update(f"❌ Extraction failed: {e}", force=True)
-            await send_log(f"yt-dlp extractor error for {url}: {e}")
-            # suggest update to user in logs
-            await send_log("Tip: If extractor errors persist, update yt-dlp in the runner (pip install -U yt-dlp) or try later.")
-            return
+async def duration(path: Path) -> float:
+    code,out,_ = await run_cmd(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=duration",
+                                "-of","default=noprint_wrappers=1:nokey=1",str(path)])
+    try: return float(out.strip())
+    except: return 0.0
 
-        # locate downloaded file
-        files = sorted([p for p in tmpdir.iterdir() if p.is_file()], key=lambda p: p.stat().st_size, reverse=True)
-        if not files:
-            await notifier.maybe_update("❌ No file produced by yt-dlp.", force=True)
-            await send_log(f"No output file after yt-dlp for {url}")
-            return
-        downloaded_file = files[0]
-        await notifier.maybe_update(f"⬇️ Download complete: {downloaded_file.name}", force=True)
+async def split_mp4(src: Path, out_dir: Path, max_bytes=PART_MAX_BYTES) -> List[Path]:
+    size = src.stat().st_size
+    if size <= max_bytes: return [src]
+    dur = await duration(src)
+    if dur <= 0: raise RuntimeError("Duration unknown")
+    seg = max(10, int(max_bytes / (size / dur)))
+    parts=[]
+    for i,start in enumerate(range(0, int(dur), seg),1):
+        out=out_dir/f"{src.stem}.part{i:02d}.mp4"
+        code,_,err=await run_cmd(["ffmpeg","-y","-ss",str(start),"-i",str(src),"-t",str(seg),"-c","copy","-movflags","+faststart",str(out)])
+        if code!=0: raise RuntimeError(err)
+        parts.append(out)
+    return parts
 
-        # remux to streamable mp4; if fails -> re-encode
-        remuxed = tmpdir / f"{downloaded_file.stem}.streamable.mp4"
-        src_for_split = downloaded_file
-        try:
-            await notifier.maybe_update("🔧 Remuxing to streamable MP4...")
-            await remux_to_streamable_mp4(downloaded_file, remuxed)
-            src_for_split = remuxed
-        except Exception as e:
-            log.warning("Remux failed (%s). Trying re-encode...", e)
-            try:
-                await notifier.maybe_update("⚠️ Remux failed — attempting re-encode (slower)...")
-                reencoded = tmpdir / f"{downloaded_file.stem}.reenc.mp4"
-                await reencode_to_mp4(downloaded_file, reencoded)
-                src_for_split = reencoded
-            except Exception as e2:
-                await notifier.maybe_update(f"❌ Remux & re-encode failed: {e2}", force=True)
-                await send_log(f"Remux & re-encode both failed for {downloaded_file}: {e2}")
-                return
+SESSIONS: Dict[str, Dict[str, Any]] = {}
 
-        # split if needed
-        size = src_for_split.stat().st_size
-        if size > PART_MAX_BYTES:
-            await notifier.maybe_update(f"✂️ Splitting into <= {PART_MAX_BYTES} bytes parts...", force=True)
-            try:
-                parts = await split_mp4_by_time(src_for_split, tmpdir, max_bytes=PART_MAX_BYTES)
-            except Exception as e:
-                await notifier.maybe_update(f"❌ Splitting failed: {e}", force=True)
-                await send_log(f"Splitting failed for {src_for_split}: {e}")
-                return
-        else:
-            parts = [src_for_split]
+# ---------- commands ----------
+@app.on_message(filters.command("start") & filters.private)
+async def start_cmd(_, m: Message):
+    if not is_allowed(m.from_user.id): return await m.reply("⛔ Access Denied")
+    await m.reply("✅ Bot running.\nSend URL or /leech <url>")
 
-        # upload parts (sequential)
-        async def upload_with_progress(part_path: Path, part_index: int, total_parts: int):
-            # progress callback
-            last_update = 0
-            total_bytes = part_path.stat().st_size
+@app.on_message(filters.command("help") & filters.private)
+async def help_cmd(_, m: Message):
+    await m.reply("/leech <url> - leech video\nSend URL directly\nOnly ALLOWED_USERS may use")
 
-            def progress_cb(current, total):
-                nonlocal last_update
-                now = time.monotonic()
-                if now - last_update >= PROGRESS_UPDATE_INTERVAL:
-                    percent = (current / total * 100) if total else 0.0
-                    text = f"⬆️ Uploading part {part_index}/{total_parts}: {part_path.name}\n{percent:.2f}% • {current//1024} KB / {total//1024} KB"
-                    # schedule async edit
-                    asyncio.get_event_loop().create_task(notifier.maybe_update(text))
-                    last_update = now
+@app.on_message(filters.command("leech") & filters.private)
+async def leech_cmd(c, m: Message):
+    if not is_allowed(m.from_user.id): return await m.reply("⛔")
+    if len(m.command)<2: return await m.reply("Usage: /leech <url>")
+    await handle_url(c,m,m.text.split(None,1)[1])
 
-            # send_document supports progress & progress_args
-            await client.send_document(chat_id, str(part_path), caption=f"Part {part_index}/{total_parts} - {part_path.name}", progress=progress_cb, progress_args=(total_bytes,))
+@app.on_message(filters.text & filters.private)
+async def text_url(c,m): 
+    if is_allowed(m.from_user.id): await handle_url(c,m,m.text.strip())
 
-        total_parts = len(parts)
-        for idx, p in enumerate(parts, start=1):
-            await notifier.maybe_update(f"📤 Uploading part {idx}/{total_parts}: {p.name}", force=True)
-            try:
-                await upload_with_progress(p, idx, total_parts)
-                await client.send_message(TG_CHAT, f"✔️ Uploaded part {idx}/{total_parts}: {p.name}")
-            except Exception as e:
-                await client.send_message(TG_CHAT, f"❌ Upload failed for {p.name}: {e}")
-                await notifier.maybe_update(f"❌ Upload failed for {p.name}: {e}", force=True)
-                return
+async def handle_url(c,m,url):
+    status=await m.reply("🔎 Fetching formats...")
+    try:
+        def fetch():
+            with yt_dlp.YoutubeDL({"quiet":True,"skip_download":True,"no_warnings":True}) as y: return y.extract_info(url,download=False)
+        info=await asyncio.get_event_loop().run_in_executor(None,fetch)
+        fmts=unique_formats_by_resolution([f for f in info.get("formats",[]) if f.get("vcodec")!="none"])
+        if not fmts: return await status.edit("No video formats")
+        token=uuid.uuid4().hex
+        SESSIONS[token]={"url":url}
+        kb=[[InlineKeyboardButton(f"{f.get('height') or ''}p",callback_data=f"LEECH:{token}:{f['format_id']}")] for f in fmts]
+        kb.append([InlineKeyboardButton("Cancel ❌",callback_data=f"CANCEL:{token}")])
+        await status.edit("Select resolution:",reply_markup=InlineKeyboardMarkup(kb))
+    except Exception as e:
+        await status.edit(f"❌ {e}")
 
-        await notifier.maybe_update(f"✅ All done. Uploaded {len(parts)} file(s).", force=True)
-        await send_log(f"Completed leech: {url} -> {len(parts)} part(s)")
-    except Exception as exc:
-        log.exception("Unhandled error in pipeline")
-        try:
-            await client.send_message(chat_id, f"❌ Error in pipeline: {exc}")
-        except Exception:
-            pass
-        await send_log(f"Unhandled pipeline error for {url}: {exc}")
+@app.on_callback_query()
+async def cb(c: Client, cq: CallbackQuery):
+    if not is_allowed(cq.from_user.id): return await cq.answer("Denied",show_alert=True)
+    d=cq.data
+    if d.startswith("CANCEL:"):
+        return await cq.message.edit("Cancelled")
+    if d.startswith("LEECH:"):
+        _,tok,fid=d.split(":",2)
+        s=SESSIONS.get(tok); url=s["url"]
+        msg=await cq.message.reply(f"Queued {fid}")
+        asyncio.create_task(pipeline(c,cq.message.chat.id,url,fid,msg.message_id))
+
+async def pipeline(c,chat_id,url,fid,msgid):
+    tmp=Path(tempfile.mkdtemp())
+    async def edit(t): 
+        try: await c.edit_message_text(chat_id,msgid,t)
+        except: pass
+    notif=ProgressNotifier(edit)
+    try:
+        def dl():
+            with yt_dlp.YoutubeDL({"format":fid,"outtmpl":str(tmp/"%(title).200s.%(ext)s"),
+                                   "noplaylist":True,"quiet":True,"no_warnings":True}) as y: return y.extract_info(url,download=True)
+        await asyncio.get_event_loop().run_in_executor(None,dl)
+        files=sorted(tmp.glob("*"),key=lambda p:p.stat().st_size,reverse=True)
+        f=files[0]
+        mp4=tmp/f"{f.stem}.mp4"
+        try: await remux(f,mp4)
+        except: await reencode(f,mp4)
+        parts=await split_mp4(mp4,tmp)
+        for i,p in enumerate(parts,1):
+            await notif.maybe_update(f"⬆️ Upload {i}/{len(parts)}",force=True)
+            await c.send_document(chat_id,str(p),caption=f"Part {i}/{len(parts)} - {p.name}")
+        await notif.maybe_update("✅ Done",force=True)
+    except Exception as e:
+        await edit(f"❌ {e}")
     finally:
-        try:
-            shutil.rmtree(tmpdir)
-        except Exception:
-            pass
+        shutil.rmtree(tmp,ignore_errors=True)
 
-# -----------------------
-# Run bot
-# -----------------------
-if __name__ == "__main__":
-    log.info("Starting leech-bot (Python %s)", sys.version.split()[0])
+# ---------- run ----------
+if __name__=="__main__":
+    asyncio.get_event_loop().run_until_complete(ensure_ytdlp_latest())
     app.run()
