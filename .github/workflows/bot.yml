@@ -1,4 +1,4 @@
-name: Windows 10 RDP with Telegram Leech Bot
+name: Windows 10 RDP with Bot
 
 on:
   workflow_dispatch:
@@ -9,7 +9,6 @@ jobs:
     timeout-minutes: 4320   # 72 hours
 
     steps:
-      # --- Your Existing RDP Setup (unchanged) ---
       - name: Configure Core RDP Settings
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
@@ -80,23 +79,34 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
-      # --- New Section: Install Python + yt-dlp + Pyrogram ---
-      - name: Install Python + Dependencies
-        run: |
-          choco install -y python --version=3.11.9
-          refreshenv
-          python -m pip install --upgrade pip
-          pip install yt-dlp pyrogram tgcrypto ffmpeg-python
-          choco install -y ffmpeg
+      # ---------- Ensure correct Python (use action to guarantee interpreter) ----------
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
 
-      # --- Fetch Your Bot Source ---
+      - name: Install Python dependencies & yt-dlp (latest)
+        run: |
+          python -V
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -U yt-dlp pyrogram tgcrypto ffmpeg-python
+          # Optionally fetch bleeding-edge yt-dlp from repo if you want: uncomment below
+          # python -m pip install -U git+https://github.com/yt-dlp/yt-dlp
+
+      # Install ffmpeg via Chocolatey (for ffmpeg/ffprobe CLI)
+      - name: Install ffmpeg (choco)
+        run: |
+          choco install -y ffmpeg
+          refreshenv
+
+      # --- Fetch Your Bot Source (your repo) ---
       - name: Checkout Bot Repo
         uses: actions/checkout@v4
         with:
-          repository: surya123-s/TestVPN   # 🔹 replace with your bot repo
+          repository: surya123-s/TestVPN   # <- replace with your repo (owner/repo)
           path: bot
 
-      # --- Run the Bot with Secrets ---
+      # --- Start the Bot ---
       - name: Start Telegram Leech Bot
         working-directory: bot
         env:
@@ -105,6 +115,7 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           TG_CHAT: ${{ secrets.TG_CHAT }}
           ALLOWED_USERS: ${{ secrets.ALLOWED_USERS }}
+          TAILSCALE_PREAUTHKEY: ${{ secrets.TAILSCALE_PREAUTHKEY }}
         run: |
           Write-Host "Launching Telegram Bot..."
           python main.py
