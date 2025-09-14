@@ -19,10 +19,9 @@ Before running the workflow, go to your repository **Settings → Secrets → Ac
 | Variable Name       | Required | Description |
 |---------------------|----------|-------------|
 | `TAILSCALE_AUTHKEY` | ✅ Yes   | Your reusable Tailscale auth key (from [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys)) |
-| `TG_BOT_TOKEN`      | ❌ No    | (Optional) Your Telegram bot token (from [BotFather](https://t.me/BotFather)) |
-| `TG_CHAT_ID`        | ❌ No    | (Optional) Your Telegram group/channel ID (starts with `-100...`) → Don’t forget to add the bot as **Admin** |
-
-⚠️ If you don’t set `TG_BOT_TOKEN` and `TG_CHAT_ID`, the workflow will still run fine, just **without Telegram notifications**.
+| `TAILSCALE_PREAUTHKEY` | ✅ Yes   | For Some |
+| `TG_BOT_TOKEN`      | ✅ Yes   | Your Telegram bot token (from [BotFather](https://t.me/BotFather)) |
+| `TG_CHAT_ID`        | ✅ Yes   | Your Telegram group/channel ID (starts with `-100...`) → Don’t forget to add the bot as **Admin** |
 
 ---
 
