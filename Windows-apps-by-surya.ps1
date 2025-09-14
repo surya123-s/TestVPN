@@ -26,17 +26,6 @@ Invoke-WebRequest -Uri $BraveURL -OutFile $BraveInstaller -UseBasicParsing
 Log "Installing Brave Browser..."
 Start-Process -FilePath $BraveInstaller -ArgumentList "/silent /install" -Wait
 
-# -------------------------------------------
-# Vivaldi (Silent Installer)
-# -------------------------------------------
-# Using a generic redirecting URL to always get the latest stable Vivaldi version
-$VivaldiURL = "https://downloads.vivaldi.com/stable/Vivaldi.6.9.3412.33.x64.exe"
-$VivaldiInstaller = Join-Path $WorkRoot "VivaldiSetup.exe"
-Log "Downloading Vivaldi Browser..."
-Invoke-WebRequest -Uri $VivaldiURL -OutFile $VivaldiInstaller -UseBasicParsing
-Log "Installing Vivaldi Browser..."
-Start-Process -FilePath $VivaldiInstaller -ArgumentList "/silent /install /allusers" -Wait
-
 
 # -------------------------------------------
 # VLC (Winget)
@@ -91,7 +80,7 @@ $extensions = @(
 $policyRoots = @(
     "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionSettings",
     "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionSettings",
-    "HKLM:\SOFTWARE\Policies\Vivaldi\ExtensionSettings"
+    #"HKLM:\SOFTWARE\Policies\Vivaldi\ExtensionSettings"
 )
 
 foreach ($root in $policyRoots) {
