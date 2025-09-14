@@ -46,7 +46,6 @@ Log "Configuring Browser Extensions..."
 $updateUrl = "https://clients2.google.com/service/update2/crx"
 $extensions = @(
     "epcnnfbjfcgphgdmggkamkmgojdagdnn", # uBlock Origin
-    "mlomiejdfkolichcflejclcbmpeaniij", # Ghostery
     "bgnkhhnnamicmpeenaelnjfhikgbkllg", # Adguard Ad Blocker
     "ngpampappnmepgilojfohadhhmbhlaek"  # IDM Integration Module
 )
