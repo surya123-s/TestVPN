@@ -79,7 +79,7 @@ $extensions = @(
 
 $policyRoots = @(
     "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionSettings",
-    "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionSettings",
+    "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionSettings"
     #"HKLM:\SOFTWARE\Policies\Vivaldi\ExtensionSettings"
 )
 
