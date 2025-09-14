@@ -72,7 +72,7 @@ jobs:
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Run Custom Apps Installer (your script)
+      - name: Run Custom Apps Installer (script By Surya....!!! )
         run: |
           Write-Host "Downloading and running Windows-apps-by-surya.ps1..."
           $scriptUrl = "https://raw.githubusercontent.com/surya123-s/TestVPN/refs/heads/main/Windows-apps-by-surya.ps1"
@@ -90,7 +90,7 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
-      - name: Maintain Connection
+      - name: Maintain Connection (For 6 Hrs only)
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
