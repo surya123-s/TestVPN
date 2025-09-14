@@ -1,4 +1,4 @@
-name: Windows 2022
+name: Windows 10
 
 on:
   workflow_dispatch:
