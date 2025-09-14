@@ -2,7 +2,7 @@
 # main.py
 """
 Telegram Video Leech Bot (Pyrogram + yt-dlp + ffmpeg)
-- Auto-check/install ffmpeg + yt-dlp
+- Auto-check/install ffmpeg on Windows + yt-dlp
 - Unique resolution selection
 - /start, /help, /leech <url>
 - Split files >1.95 GB
@@ -21,8 +21,11 @@ import time
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 import subprocess
+import platform
+import zipfile
+import urllib.request
 
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -47,7 +50,6 @@ if not BOT_TOKEN or not API_ID or not API_HASH or not TG_CHAT:
 # ---------- Pyrogram ----------
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery
-
 app = Client("leech-bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 # ---------- Ensure yt-dlp installed ----------
@@ -62,12 +64,33 @@ async def ensure_ytdlp():
 
 import yt_dlp
 
-# ---------- Ensure ffmpeg exists ----------
+# ---------- Auto ffmpeg install for Windows ----------
 def ensure_ffmpeg():
-    try:
-        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except FileNotFoundError:
-        raise RuntimeError("ffmpeg not found. Please install ffmpeg and ensure it's in PATH")
+    system = platform.system()
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        log.info(f"ffmpeg found: {ffmpeg_path}")
+        return
+
+    if system == "Windows":
+        log.info("ffmpeg not found, downloading static build for Windows...")
+        url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+        tmp_zip = Path(tempfile.gettempdir()) / "ffmpeg.zip"
+        urllib.request.urlretrieve(url, tmp_zip)
+        extract_dir = Path(tempfile.gettempdir()) / "ffmpeg"
+        with zipfile.ZipFile(tmp_zip, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+        # ffmpeg bin path (inside zip folder)
+        ff_bin = next(extract_dir.glob("**/ffmpeg.exe"))
+        if not ff_bin.exists():
+            raise RuntimeError("ffmpeg.exe not found in extracted zip")
+        # Add to PATH at runtime
+        os.environ["PATH"] = str(ff_bin.parent) + os.pathsep + os.environ["PATH"]
+        log.info(f"ffmpeg ready: {ff_bin}")
+    else:
+        # On Linux/macOS, assume in PATH
+        if not ffmpeg_path:
+            raise RuntimeError("ffmpeg not found in PATH. Please install it manually.")
 
 ensure_ffmpeg()
 
