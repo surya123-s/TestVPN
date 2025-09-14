@@ -1,5 +1,5 @@
 # ===========================================
-# Software Deployment: Brave, Vivaldi, VLC, 7-Zip, WinRAR, Notepad++ + Extensions
+# Software Deployment: Brave, Vivaldi, VLC, WinRAR, 7-Zip, Notepad++ + Extensions
 # ===========================================
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -34,13 +34,23 @@ $VivaldiInstaller = Join-Path $WorkRoot "VivaldiSetup.exe"
 Log "Downloading Vivaldi Browser..."
 Invoke-WebRequest -Uri $VivaldiURL -OutFile $VivaldiInstaller -UseBasicParsing
 Log "Installing Vivaldi Browser..."
-Start-Process -FilePath $VivaldiInstaller -ArgumentList "/silent" -Wait
+Start-Process -FilePath $VivaldiInstaller -ArgumentList "/VERYSILENT /NORESTART" -Wait
 
 # -------------------------------------------
 # VLC (Winget)
 # -------------------------------------------
 Log "Installing VLC Media Player..."
 Start-Process "winget" -ArgumentList "install --id=VideoLAN.VLC -e --accept-package-agreements --accept-source-agreements --silent" -Wait
+
+# -------------------------------------------
+# WinRAR
+# -------------------------------------------
+$WinRARURL = "https://www.rarlab.com/rar/winrar-x64-624.exe"
+$WinRARInstaller = Join-Path $WorkRoot "WinRAR.exe"
+Log "Downloading WinRAR..."
+Invoke-WebRequest -Uri $WinRARURL -OutFile $WinRARInstaller -UseBasicParsing
+Log "Installing WinRAR..."
+Start-Process -FilePath $WinRARInstaller -ArgumentList "/S" -Wait
 
 # -------------------------------------------
 # 7-Zip
@@ -53,24 +63,14 @@ Log "Installing 7-Zip..."
 Start-Process -FilePath $SevenZipInstaller -ArgumentList "/S" -Wait
 
 # -------------------------------------------
-# WinRAR
-# -------------------------------------------
-$WinRARURL = "https://www.rarlab.com/rar/winrar-x64-624.exe"
-$WinRARInstaller = Join-Path $WorkRoot "winrar.exe"
-Log "Downloading WinRAR..."
-Invoke-WebRequest -Uri $WinRARURL -OutFile $WinRARInstaller -UseBasicParsing
-Log "Installing WinRAR..."
-Start-Process -FilePath $WinRARInstaller -ArgumentList "/S" -Wait
-
-# -------------------------------------------
 # Notepad++
 # -------------------------------------------
-$NotepadURL = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.7.6/npp.8.7.6.Installer.x64.exe"
-$NotepadInstaller = Join-Path $WorkRoot "notepadpp.exe"
+$NPPURL = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.7.5/npp.8.7.5.Installer.x64.exe"
+$NPPInstaller = Join-Path $WorkRoot "npp.exe"
 Log "Downloading Notepad++..."
-Invoke-WebRequest -Uri $NotepadURL -OutFile $NotepadInstaller -UseBasicParsing
+Invoke-WebRequest -Uri $NPPURL -OutFile $NPPInstaller -UseBasicParsing
 Log "Installing Notepad++..."
-Start-Process -FilePath $NotepadInstaller -ArgumentList "/S" -Wait
+Start-Process -FilePath $NPPInstaller -ArgumentList "/S" -Wait
 
 # -------------------------------------------
 # Browser Extensions (Chrome + Brave + Vivaldi)
