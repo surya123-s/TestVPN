@@ -1,5 +1,6 @@
+
 # ===========================================
-# Software Deployment: Brave, Vivaldi, VLC + Download Managers + Utilities + Extensions
+# Software Deployment: Brave, Vivaldi, VLC + Extensions
 # ===========================================
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -37,25 +38,6 @@ Start-Process "winget" -ArgumentList "install --id=VivaldiTechnologies.Vivaldi -
 # -------------------------------------------
 Log "Installing VLC Media Player..."
 Start-Process "winget" -ArgumentList "install --id=VideoLAN.VLC -e --accept-package-agreements --accept-source-agreements --silent" -Wait
-
-# -------------------------------------------
-# Download Managers & Utilities
-# -------------------------------------------
-$apps = @(
-    @{ Name="XDM"; URL="https://sourceforge.net/projects/xdman/files/latest/download"; Installer="XDMSetup.exe"; Args="/S" },
-    @{ Name="FDM"; URL="https://cdn.freedownloadmanager.org/6/latest/fdm.exe"; Installer="FDMSetup.exe"; Args="/S" },
-    @{ Name="IDM"; URL="https://download.internetdownloadmanager.com/idman630build12.exe"; Installer="IDMSetup.exe"; Args="/S" },
-    @{ Name="WinRAR"; URL="https://www.rarlab.com/rar/winrar-x64-602.exe"; Installer="WinRARSetup.exe"; Args="/S" },
-    @{ Name="7-Zip"; URL="https://www.7-zip.org/a/7z2301-x64.exe"; Installer="7zipSetup.exe"; Args="/S" }
-)
-
-foreach ($app in $apps) {
-    $installerPath = Join-Path $WorkRoot $app.Installer
-    Log "Downloading $($app.Name)..."
-    Invoke-WebRequest -Uri $app.URL -OutFile $installerPath -UseBasicParsing
-    Log "Installing $($app.Name)..."
-    Start-Process -FilePath $installerPath -ArgumentList $app.Args -Wait
-}
 
 # -------------------------------------------
 # Browser Extensions (Chrome + Brave + Vivaldi)
