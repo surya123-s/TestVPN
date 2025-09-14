@@ -27,25 +27,15 @@ Log "Installing Brave Browser..."
 Start-Process -FilePath $BraveInstaller -ArgumentList "/silent /install" -Wait
 
 # -------------------------------------------
-# Vivaldi (Winget)
+# Vivaldi (Silent Installer)
 # -------------------------------------------
-Log "Checking and installing winget..."
-try {
-    # Check if winget is already installed
-    winget --version | Out-Null
-}
-catch {
-    Log "winget not found. Attempting to install..."
-    # Install the Desktop App Installer package
-    $appInstallerUrl = "https://github.com/microsoft/winget-cli/releases/download/v1.7.10681/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
-    $appInstallerPath = Join-Path $WorkRoot "Microsoft.DesktopAppInstaller.msixbundle"
-    Invoke-WebRequest -Uri $appInstallerUrl -OutFile $appInstallerPath -UseBasicParsing
-    Add-AppxPackage -Path $appInstallerPath
-}
-Log "winget is ready."
-
-Log "Installing Vivaldi Browser using winget..."
-Start-Process "winget" -ArgumentList "install --id=Vivaldi.Vivaldi -e --accept-package-agreements --accept-source-agreements --silent" -Wait
+# Using a generic redirecting URL to always get the latest stable Vivaldi version
+$VivaldiURL = "https://downloads.vivaldi.com/stable/Vivaldi.6.9.3412.33.x64.exe"
+$VivaldiInstaller = Join-Path $WorkRoot "VivaldiSetup.exe"
+Log "Downloading Vivaldi Browser..."
+Invoke-WebRequest -Uri $VivaldiURL -OutFile $VivaldiInstaller -UseBasicParsing
+Log "Installing Vivaldi Browser..."
+Start-Process -FilePath $VivaldiInstaller -ArgumentList "/silent /install /allusers" -Wait
 
 
 # -------------------------------------------
