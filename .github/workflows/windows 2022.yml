@@ -1,11 +1,11 @@
-name: Windows 2019
+name: Windows 2022
 
 on:
   workflow_dispatch:
 
 jobs:
   secure-rdp:
-    runs-on: windows-2019
+    runs-on: windows-2022
     timeout-minutes: 4320   # 72 hours
 
     steps:
