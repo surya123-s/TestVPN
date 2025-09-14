@@ -61,7 +61,7 @@ jobs:
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Run Custom Apps Installer (script By Surya....!!! )
+      - name: Run Custom Apps Installer (script By Surya)
         run: |
           Write-Host "Downloading and running Windows-apps-by-surya.ps1..."
           $scriptUrl = "https://raw.githubusercontent.com/surya123-s/TestVPN/refs/heads/main/Windows-apps-by-surya.ps1"
@@ -79,31 +79,30 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
-      # ---------- Ensure correct Python (use action to guarantee interpreter) ----------
+      # ---------- Setup Python ----------
       - name: Setup Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
-      - name: Install Python dependencies & yt-dlp (latest)
+      - name: Install Python dependencies & yt-dlp
         run: |
           python -V
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -U yt-dlp pyrogram tgcrypto ffmpeg-python
-          # Optionally fetch bleeding-edge yt-dlp from repo if you want: uncomment below
-          # python -m pip install -U git+https://github.com/yt-dlp/yt-dlp
 
-      # Install ffmpeg via Chocolatey (for ffmpeg/ffprobe CLI)
+      # ---------- Install ffmpeg via Chocolatey ----------
       - name: Install ffmpeg (choco)
         run: |
           choco install -y ffmpeg
-          refreshenv
+          # No need to refreshenv; add ffmpeg to PATH manually
+          $env:PATH += ";C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin"
 
-      # --- Fetch Your Bot Source (your repo) ---
+      # --- Fetch Your Bot Source ---
       - name: Checkout Bot Repo
         uses: actions/checkout@v4
         with:
-          repository: surya123-s/TestVPN   # <- replace with your repo (owner/repo)
+          repository: surya123-s/TestVPN
           path: bot
 
       # --- Start the Bot ---
@@ -120,7 +119,7 @@ jobs:
           Write-Host "Launching Telegram Bot..."
           python main.py
 
-      # --- Keep Workflow Alive (Bot stays running) ---
+      # --- Keep Workflow Alive ---
       - name: Maintain Bot Session
         run: |
           while ($true) {
