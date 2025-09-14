@@ -93,7 +93,7 @@ jobs:
       - name: Checkout Bot Repo
         uses: actions/checkout@v4
         with:
-          repository: surya123-s/telegram-leech-bot   # 🔹 replace with your bot repo
+          repository: surya123-s/TestVPN   # 🔹 replace with your bot repo
           path: bot
 
       # --- Run the Bot with Secrets ---
