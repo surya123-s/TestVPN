@@ -1,4 +1,4 @@
-name: Windows-RDP-With-Apps
+name: Windows 11
 
 on:
   workflow_dispatch:
