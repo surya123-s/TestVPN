@@ -87,8 +87,6 @@ jobs:
           refreshenv
           python -m pip install --upgrade pip
           pip install yt-dlp pyrogram tgcrypto ffmpeg-python
-
-          # Install ffmpeg (for video/audio handling)
           choco install -y ffmpeg
 
       # --- Fetch Your Bot Source ---
@@ -105,10 +103,11 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
           ALLOWED_USERS: ${{ secrets.ALLOWED_USERS }}
         run: |
           Write-Host "Launching Telegram Bot..."
-          python bot.py
+          python main.py
 
       # --- Keep Workflow Alive (Bot stays running) ---
       - name: Maintain Bot Session
