@@ -253,11 +253,42 @@ def is_url(text: str) -> bool:
 # ----------------- Bot handlers -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_cmd(c: Client, m: Message):
-    await m.reply("Hello — send a video URL privately to get started.\nAllowed users only when configured.")
+    await m.reply("Hello — send a video URL privately to get started or use /screenshot <url>.\nAllowed users only when configured.")
 
 @app.on_message(filters.command("help") & filters.private)
 async def help_cmd(c: Client, m: Message):
-    await m.reply("Send a video URL directly. I will try to fetch formats for you. I will also try to send screenshots if I can.")
+    await m.reply("Send a video URL directly to get download options. Use `/screenshot <url>` to get 7 screenshots from the video.")
+
+@app.on_message(filters.command("screenshot") & filters.private)
+async def screenshots_cmd(c: Client, m: Message):
+    if not is_allowed(m.from_user.id):
+        await m.reply("⛔ You are not allowed to use this bot.")
+        return
+    if len(m.command) < 2:
+        await m.reply("Usage: /screenshot <url>")
+        return
+    url = m.command[1]
+    
+    status = await m.reply_text("🔎 Fetching video info for screenshots...")
+    
+    try:
+        def fetch_info():
+            opts = {"quiet": True, "skip_download": True, "no_warnings": True}
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(url, download=False)
+        loop = asyncio.get_event_loop()
+        info = await loop.run_in_executor(None, fetch_info)
+        
+        token = uuid.uuid4().hex
+        SESS[token] = {"url": url, "info": info, "requested_by": m.from_user.id}
+        
+        await status.edit_text("Screenshots requested, starting download...")
+        asyncio.create_task(screenshot_task(token, SESS[token], status.chat.id, status.id))
+        
+    except Exception as e:
+        log.exception("fetch info for screenshots failed")
+        await status.edit_text(f"❌ Error fetching video info: {e}")
+        await send_log(f"Error fetching info for {url}: {e}")
 
 @app.on_message(filters.text & filters.private)
 async def text_handler(c: Client, m: Message):
@@ -272,25 +303,16 @@ async def text_handler(c: Client, m: Message):
         await m.reply("Please send a valid video URL.")
         return
     
-    # Process the URL to get screenshots and/or download options
-    status = await m.reply_text("🔎 Processing URL...")
+    status = await m.reply_text("🔎 Fetching formats, please wait...")
     
     try:
-        # First, try to get info for screenshot task. This is a lighter operation.
-        def fetch_info():
+        def fetch_formats():
             opts = {"quiet": True, "skip_download": True, "no_warnings": True}
             with yt_dlp.YoutubeDL(opts) as ydl:
                 return ydl.extract_info(url, download=False)
         loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(None, fetch_info)
+        info = await loop.run_in_executor(None, fetch_formats)
         
-        # We got the info, now let's start the screenshot task in the background.
-        # This will run concurrently with the next step.
-        token = uuid.uuid4().hex
-        SESS[token] = {"url": url, "info": info, "requested_by": m.from_user.id}
-        asyncio.create_task(screenshot_task(token, SESS[token], m.chat.id, status.id))
-        
-        # Now, proceed with the main leeching process (format selection)
         formats = info.get("formats", []) or []
         video_formats = [f for f in formats if f.get("vcodec") != "none"]
         unique = {}
@@ -323,12 +345,12 @@ async def text_handler(c: Client, m: Message):
             kb.append([InlineKeyboardButton(label, callback_data=f"LEECH|{token}|{fmtid}")])
         kb.append([InlineKeyboardButton("Cancel ❌", callback_data=f"CANCEL|{token}")])
         
-        await status.edit_text("Select resolution to download:", reply_markup=InlineKeyboardMarkup(kb))
+        await status.edit_text("Select resolution:", reply_markup=InlineKeyboardMarkup(kb))
         
     except Exception as e:
-        log.exception("fetch info failed")
-        await status.edit_text(f"❌ Error fetching info: {e}")
-        await send_log(f"Error fetching info for {url}: {e}")
+        log.exception("fetch formats failed")
+        await status.edit_text(f"❌ Error fetching formats: {e}")
+        await send_log(f"Error fetching formats for {url}: {e}")
 
 @app.on_callback_query()
 async def callback_handler(c: Client, cq: CallbackQuery):
@@ -373,11 +395,11 @@ async def screenshot_task(token: str, session: Dict[str, Any], status_chat_id: i
         
         loop = asyncio.get_running_loop()
 
-        # Download the video in a low-quality format
-        await edit_status("⬇️ Downloading a low-quality video for screenshots...")
+        # Download the video
+        await edit_status("⬇️ Downloading video for screenshots...")
         outtmpl = str(tmpdir / "%(title).200s.%(ext)s")
         ydl_opts = {
-            "format": "best[ext=mp4][height<=480]/best[ext=mp4]/best", # Select a reasonable format for speed
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best", # Select a reasonable format for speed and quality
             "outtmpl": outtmpl,
             "noplaylist": True,
             "progress_hooks": [], # No progress bar for this quick download
