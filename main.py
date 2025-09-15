@@ -11,7 +11,7 @@ Preserves all previous messages/features:
 - split > PART_MAX_GB (default 1.95 GiB)
 - send files into TG_CHAT
 - ALLOWED_USERS enforcement
-- robust retries for Cloudflare / xHamster extractor errors
+- robust retries for Cloudflare 
 """
 
 import os
