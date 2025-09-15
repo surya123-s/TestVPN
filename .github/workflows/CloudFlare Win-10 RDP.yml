@@ -1,79 +1,36 @@
-name: Windows 10 RDP (Cloudflare Tunnel)
+name: Cloudflare Tunnel for RDP
 
 on:
   workflow_dispatch:
 
 jobs:
-  rdp:
+  tunnel:
     runs-on: windows-2022
-    timeout-minutes: 4320   # 72 hours
-
     steps:
-      - name: Configure Core RDP Settings
-        run: |
-          # Enable Remote Desktop and disable NLA
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                           -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                           -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                           -Name "SecurityLayer" -Value 0 -Force
-
-          # Firewall rule for RDP
-          netsh advfirewall firewall delete rule name="RDP"
-          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
-
-          Restart-Service -Name TermService -Force
-
-      - name: Create RDP User
-        run: |
-          $username = "cyberpunk"
-          $password = "Surya@12345RDP"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-
-          if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
-              Remove-LocalUser -Name $username
-          }
-
-          New-LocalUser -Name $username -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member $username
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
-
-          echo "RDP_CREDS=User: $username | Password: $password" >> $env:GITHUB_ENV
-
-      - name: Install Cloudflare Tunnel
-        run: |
-          Invoke-WebRequest -Uri https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile "$env:TEMP\cloudflared.exe"
-          Move-Item "$env:TEMP\cloudflared.exe" "C:\Windows\System32\cloudflared.exe"
-
-      - name: Start Cloudflare Tunnel (Random URL)
+      - name: Start Cloudflare Tunnel
+        shell: pwsh
         run: |
           Write-Host "Starting Cloudflare Tunnel for RDP..."
-          Start-Process -FilePath "cloudflared.exe" -ArgumentList "tunnel --url rdp://localhost:3389 --no-autoupdate" -RedirectStandardOutput "$env:TEMP\cf.log" -NoNewWindow
-          Start-Sleep -Seconds 15
-          
-          $url = (Get-Content "$env:TEMP\cf.log" | Select-String -Pattern "trycloudflare.com" | Select-Object -Last 1).ToString().Split(" ") | Where-Object {$_ -like "https://*"}
-          if (-not $url) {
-              Write-Error "Cloudflare Tunnel failed to generate URL"
-              exit 1
-          }
-          echo "CLOUDFLARE_URL=$url" >> $env:GITHUB_ENV
-          Write-Host "Cloudflare Tunnel URL: $url"
 
-      - name: Show RDP Connection Info
-        run: |
-          Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Cloudflare Tunnel URL: $env:CLOUDFLARE_URL"
-          Write-Host "Username: cyberpunk"
-          Write-Host "Password: Surya@12345RDP"
-          Write-Host ""
-          Write-Host "🔹 Use FreeRDP command:"
-          Write-Host "xfreerdp /v:$env:CLOUDFLARE_URL /u:cyberpunk /p:Surya@12345RDP /f /clipboard /sound"
-          Write-Host "==================`n"
+          # Start cloudflared in background with JSON logs
+          Start-Process -FilePath "cloudflared" `
+            -ArgumentList "tunnel --url rdp://localhost:3389 --no-autoupdate --logfile $env:TEMP\cf.log --logformat json" `
+            -NoNewWindow
 
-      - name: Keep Session Alive
-        run: |
-          while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Tunnel running"
-              Start-Sleep -Seconds 300
+          # Give it some time to boot
+          Start-Sleep -Seconds 8
+
+          # Extract tunnel URL safely
+          $url = (Get-Content "$env:TEMP\cf.log" -Raw | Select-String -Pattern '"hostname"' | ForEach-Object {
+              ($_ -split '"hostname":')[1] -split '"' | Select-Object -Index 1
+          } | Select-Object -First 1)
+
+          if ([string]::IsNullOrEmpty($url)) {
+              Write-Host "⚠️ No tunnel URL found, but process may still be running."
+          } else {
+              Write-Host "✅ Your tunnel URL is: $url"
           }
+
+          # Keep job alive (tunnel will close if script exits)
+          Write-Host "Tunnel is running... press Ctrl+C to stop."
+          Start-Sleep -Seconds 3600
