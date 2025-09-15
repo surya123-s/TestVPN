@@ -634,4 +634,4 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
 # ----------------- Run -----------------
 if __name__ == "__main__":
     log.info("Starting leech-bot (PID %s)", os.getpid())
-    app.run()
+    app.run() 
