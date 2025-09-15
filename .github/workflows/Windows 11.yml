@@ -28,8 +28,8 @@ jobs:
 
       - name: Create Permanent RDP User
         run: |
-          $username = "rdpuser"
-          $password = "Cyber@12345RDP"
+          $username = "cyberpunk"
+          $password = "Surya@12345RDP"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
           if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
@@ -72,7 +72,7 @@ jobs:
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Run Custom Apps Installer (your script)
+      - name: Run Custom Apps Installer (script By Surya....!!! )
         run: |
           Write-Host "Downloading and running Windows-apps-by-surya.ps1..."
           $scriptUrl = "https://raw.githubusercontent.com/surya123-s/TestVPN/refs/heads/main/Windows-apps-by-surya.ps1"
@@ -94,9 +94,11 @@ jobs:
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: rdpuser"
-          Write-Host "Password: Cyber@12345RDP"
-          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:rdpuser /p:Cyber@12345RDP /f /clipboard /sound"
+          Write-Host "Username: cyberpunk"
+          Write-Host "Password: Surya@12345RDP"
+          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /clipboard /sound"
+          Write-Host "For low network or best performance use this command :"
+          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /fast-path /network:modem /bpp:16 /compression /gfx:rfx /codec-cache:per-session /sound:sys:alsa /clipboard"
           Write-Host "==================`n"
           
           while ($true) {

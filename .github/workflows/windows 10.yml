@@ -97,6 +97,8 @@ jobs:
           Write-Host "Username: cyberpunk"
           Write-Host "Password: Surya@12345RDP"
           Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /clipboard /sound"
+          Write-Host "For low network or best performance use this command :"
+          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /fast-path /network:modem /bpp:16 /compression /gfx:rfx /codec-cache:per-session /sound:sys:alsa /clipboard"
           Write-Host "==================`n"
           
           while ($true) {
