@@ -26,6 +26,7 @@ import asyncio
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+import re
 
 import yt_dlp
 from pyrogram import Client, filters
@@ -44,7 +45,7 @@ ALLOWED_USERS = [s.strip() for s in os.environ.get("ALLOWED_USERS", "").split(",
 
 PART_MAX_GB = float(os.environ.get("PART_MAX_GB", "1.95"))
 PART_MAX_BYTES = int(PART_MAX_GB * (1024 ** 3))
-PROGRESS_INTERVAL = int(os.environ.get("PROGRESS_UPDATE_INTERVAL", "5"))  # seconds
+PROGRESS_INTERVAL = int(os.environ.get("PROGRESS_UPDATE_INTERVAL", "3"))  # seconds
 
 # sanity checks
 if not BOT_TOKEN or not API_ID or not API_HASH or not TG_CHAT:
@@ -237,106 +238,97 @@ async def get_screenshots(video_path: Path, output_dir: Path, count: int = 7) ->
 # ----------------- Session store -----------------
 SESS: Dict[str, Dict[str, Any]] = {}  # token -> {url, info, requested_by}
 
+# ----------------- URL Validation -----------------
+URL_REGEX = re.compile(
+    r"^(?:http|ftp)s?://"  # http:// or https://
+    r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
+    r"localhost|"  # localhost...
+    r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
+    r"(?::\d+)?"  # optional port
+    r"(?:/?|[/?]\S+)$", re.IGNORECASE)
+
+def is_url(text: str) -> bool:
+    return re.match(URL_REGEX, text) is not None
+
 # ----------------- Bot handlers -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_cmd(c: Client, m: Message):
-    await m.reply("Hello — send a video URL privately or use /leech <url> or /screenshots <url>.\nAllowed users only when configured.")
+    await m.reply("Hello — send a video URL privately to get started.\nAllowed users only when configured.")
 
 @app.on_message(filters.command("help") & filters.private)
 async def help_cmd(c: Client, m: Message):
-    await m.reply("Send a video URL or use `/leech <url>`. Choose resolution button (up to 1080p). Use `/screenshots <url>` to get 7 screenshots from the video.")
-
-@app.on_message(filters.command("leech") & filters.private)
-async def leech_cmd(c: Client, m: Message):
-    if not is_allowed(m.from_user.id):
-        await m.reply("⛔ You are not allowed to use this bot.")
-        return
-    if len(m.command) < 2:
-        await m.reply("Usage: /leech <url>")
-        return
-    url = m.text.split(None, 1)[1].strip()
-    await handle_incoming_url(m, url, task_type="leech")
-
-@app.on_message(filters.command("screenshots") & filters.private)
-async def screenshots_cmd(c: Client, m: Message):
-    if not is_allowed(m.from_user.id):
-        await m.reply("⛔ You are not allowed to use this bot.")
-        return
-    if len(m.command) < 2:
-        await m.reply("Usage: /screenshots <url>")
-        return
-    url = m.text.split(None, 1)[1].strip()
-    await handle_incoming_url(m, url, task_type="screenshots")
+    await m.reply("Send a video URL directly. I will try to fetch formats for you. I will also try to send screenshots if I can.")
 
 @app.on_message(filters.text & filters.private)
 async def text_handler(c: Client, m: Message):
     if not is_allowed(m.from_user.id):
         await m.reply("⛔ You are not allowed to use this bot.")
         return
+    
     url = m.text.strip()
-    await handle_incoming_url(m, url, task_type="leech")
-
-async def handle_incoming_url(message: Message, url: str, task_type: str):
-    if task_type == "screenshots":
-        status = await message.reply_text("🔎 Fetching video info for screenshots...")
-        try:
-            def fetch_info():
-                opts = {"quiet": True, "skip_download": True, "no_warnings": True}
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    return ydl.extract_info(url, download=False)
-            loop = asyncio.get_event_loop()
-            info = await loop.run_in_executor(None, fetch_info)
-            token = uuid.uuid4().hex
-            SESS[token] = {"url": url, "info": info, "requested_by": message.from_user.id}
+    
+    # Check if the text is a valid URL
+    if not is_url(url):
+        await m.reply("Please send a valid video URL.")
+        return
+    
+    # Process the URL to get screenshots and/or download options
+    status = await m.reply_text("🔎 Processing URL...")
+    
+    try:
+        # First, try to get info for screenshot task. This is a lighter operation.
+        def fetch_info():
+            opts = {"quiet": True, "skip_download": True, "no_warnings": True}
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(url, download=False)
+        loop = asyncio.get_event_loop()
+        info = await loop.run_in_executor(None, fetch_info)
+        
+        # We got the info, now let's start the screenshot task in the background.
+        # This will run concurrently with the next step.
+        token = uuid.uuid4().hex
+        SESS[token] = {"url": url, "info": info, "requested_by": m.from_user.id}
+        asyncio.create_task(screenshot_task(token, SESS[token], m.chat.id, status.id))
+        
+        # Now, proceed with the main leeching process (format selection)
+        formats = info.get("formats", []) or []
+        video_formats = [f for f in formats if f.get("vcodec") != "none"]
+        unique = {}
+        
+        # build unique by height, prefer best tbr/filesize
+        for f in video_formats:
+            h = f.get("height") or 0
+            if h > 1080:
+                continue
+            cur = unique.get(h)
+            score = (f.get("filesize") or 0) + int((f.get("tbr") or 0) * 1024)
+            cur_score = 0
+            if cur:
+                cur_score = (cur.get("filesize") or 0) + int((cur.get("tbr") or 0) * 1024)
+            if not cur or score > cur_score:
+                unique[h] = f
+        
+        choices = [unique[h] for h in sorted(unique.keys(), reverse=True)]
+        if not choices:
+            await status.edit_text("❌ No video formats found.")
+            return
             
-            # Start screenshot task directly without format selection
-            asyncio.create_task(screenshot_task(token, SESS[token], status.chat.id, status.id))
-        except Exception as e:
-            log.exception("fetch info for screenshots failed")
-            await status.edit_text(f"❌ Error fetching video info: {e}")
-            await send_log(f"Error fetching info for {url}: {e}")
-    else: # Leech task
-        status = await message.reply_text("🔎 Fetching formats, please wait...")
-        try:
-            def fetch_formats():
-                opts = {"quiet": True, "skip_download": True, "no_warnings": True}
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    return ydl.extract_info(url, download=False)
-            loop = asyncio.get_event_loop()
-            info = await loop.run_in_executor(None, fetch_formats)
-            formats = info.get("formats", []) or []
-            video_formats = [f for f in formats if f.get("vcodec") != "none"]
-            unique = {}
-            # build unique by height, prefer best tbr/filesize
-            for f in video_formats:
-                h = f.get("height") or 0
-                if h > 1080:
-                    continue
-                cur = unique.get(h)
-                score = (f.get("filesize") or 0) + int((f.get("tbr") or 0) * 1024)
-                cur_score = 0
-                if cur:
-                    cur_score = (cur.get("filesize") or 0) + int((cur.get("tbr") or 0) * 1024)
-                if not cur or score > cur_score:
-                    unique[h] = f
-            choices = [unique[h] for h in sorted(unique.keys(), reverse=True)]
-            if not choices:
-                await status.edit_text("❌ No video formats found.")
-                return
-            token = uuid.uuid4().hex
-            SESS[token] = {"url": url, "info": info, "requested_by": message.from_user.id}
-            kb = []
-            for f in choices:
-                h = f.get("height") or 0
-                label = f"{h}p" if h else "auto"
-                fmtid = f.get("format_id")
-                kb.append([InlineKeyboardButton(label, callback_data=f"LEECH|{token}|{fmtid}")])
-            kb.append([InlineKeyboardButton("Cancel ❌", callback_data=f"CANCEL|{token}")])
-            await status.edit_text("Select resolution:", reply_markup=InlineKeyboardMarkup(kb))
-        except Exception as e:
-            log.exception("fetch formats failed")
-            await status.edit_text(f"❌ Error fetching formats: {e}")
-            await send_log(f"Error fetching formats for {url}: {e}")
+        token = uuid.uuid4().hex
+        SESS[token] = {"url": url, "info": info, "requested_by": m.from_user.id}
+        kb = []
+        for f in choices:
+            h = f.get("height") or 0
+            label = f"{h}p" if h else "auto"
+            fmtid = f.get("format_id")
+            kb.append([InlineKeyboardButton(label, callback_data=f"LEECH|{token}|{fmtid}")])
+        kb.append([InlineKeyboardButton("Cancel ❌", callback_data=f"CANCEL|{token}")])
+        
+        await status.edit_text("Select resolution to download:", reply_markup=InlineKeyboardMarkup(kb))
+        
+    except Exception as e:
+        log.exception("fetch info failed")
+        await status.edit_text(f"❌ Error fetching info: {e}")
+        await send_log(f"Error fetching info for {url}: {e}")
 
 @app.on_callback_query()
 async def callback_handler(c: Client, cq: CallbackQuery):
