@@ -26,7 +26,6 @@ import asyncio
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-import re
 
 import yt_dlp
 from pyrogram import Client, filters
@@ -40,12 +39,12 @@ log = logging.getLogger("leech-bot")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH")
-TG_CHAT = os.environ.get("TG_CHAT", "")  # e.g. "-1001234567890" or "@channel"
+TG_CHAT = os.environ.get("TG_CHAT", "")
 ALLOWED_USERS = [s.strip() for s in os.environ.get("ALLOWED_USERS", "").split(",") if s.strip()]
 
 PART_MAX_GB = float(os.environ.get("PART_MAX_GB", "1.95"))
 PART_MAX_BYTES = int(PART_MAX_GB * (1024 ** 3))
-PROGRESS_INTERVAL = int(os.environ.get("PROGRESS_UPDATE_INTERVAL", "3"))  # seconds
+PROGRESS_INTERVAL = int(os.environ.get("PROGRESS_UPDATE_INTERVAL", "5")) # seconds
 
 # sanity checks
 if not BOT_TOKEN or not API_ID or not API_HASH or not TG_CHAT:
@@ -203,125 +202,49 @@ async def split_mp4_by_time(src: Path, out_dir: Path, max_bytes: int = PART_MAX_
             raise RuntimeError(f"Part too large after split: {p} ({p.stat().st_size})")
     return parts
 
-# ----------------- Screenshot helpers -----------------
-async def get_screenshots(video_path: Path, output_dir: Path, count: int = 7) -> List[Path]:
-    """Generates `count` screenshots from a video file."""
-    screenshots: List[Path] = []
-    try:
-        duration = await ffprobe_duration_seconds(video_path)
-        if duration <= 0:
-            raise RuntimeError("Could not determine video duration.")
-        
-        interval = duration / (count + 1)
-        
-        for i in range(1, count + 1):
-            timestamp = i * interval
-            output_file = output_dir / f"{video_path.stem}_ss_{i}.jpg"
-            
-            # Use -ss before -i for faster seeking
-            cmd = [
-                FFMPEG, "-y", "-ss", str(timestamp), "-i", str(video_path),
-                "-vframes", "1", "-q:v", "2", str(output_file)
-            ]
-            
-            code, out, err = await run_cmd(cmd)
-            if code == 0 and output_file.exists():
-                screenshots.append(output_file)
-            else:
-                log.error(f"Failed to generate screenshot at {timestamp}s: {err}")
-    except Exception as e:
-        log.exception(f"Screenshot generation failed: {e}")
-        return []
-    
-    return screenshots
-
 # ----------------- Session store -----------------
-SESS: Dict[str, Dict[str, Any]] = {}  # token -> {url, info, requested_by}
-
-# ----------------- URL Validation -----------------
-URL_REGEX = re.compile(
-    r"^(?:http|ftp)s?://"  # http:// or https://
-    r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
-    r"localhost|"  # localhost...
-    r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
-    r"(?::\d+)?"  # optional port
-    r"(?:/?|[/?]\S+)$", re.IGNORECASE)
-
-def is_url(text: str) -> bool:
-    return re.match(URL_REGEX, text) is not None
+SESS: Dict[str, Dict[str, Any]] = {} # token -> {url, info, requested_by}
 
 # ----------------- Bot handlers -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_cmd(c: Client, m: Message):
-    await m.reply("Hello — send a video URL privately to get started or use /screenshot <url>.\nAllowed users only when configured.")
+    await m.reply("Hello — send a video URL privately or use /leech <url>.\nAllowed users only when configured.")
 
 @app.on_message(filters.command("help") & filters.private)
 async def help_cmd(c: Client, m: Message):
-    await m.reply("Send a video URL directly to get download options. Use `/screenshot <url>` to get 7 screenshots from the video.")
+    await m.reply("Send a video URL or use `/leech <url>`. Choose resolution button (up to 1080p).")
 
-@app.on_message(filters.command("screenshot") & filters.private)
-async def screenshots_cmd(c: Client, m: Message):
+@app.on_message(filters.command("leech") & filters.private)
+async def leech_cmd(c: Client, m: Message):
     if not is_allowed(m.from_user.id):
         await m.reply("⛔ You are not allowed to use this bot.")
         return
     if len(m.command) < 2:
-        await m.reply("Usage: /screenshot <url>")
+        await m.reply("Usage: /leech <url>")
         return
-    url = m.command[1]
-    
-    # Check if the text is a valid URL
-    if not is_url(url):
-        await m.reply("❌ The provided URL is not valid.")
-        return
-
-    status = await m.reply_text("🔎 Fetching video info for screenshots...")
-    
-    try:
-        def fetch_info():
-            opts = {"quiet": True, "skip_download": True, "no_warnings": True}
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(url, download=False)
-        loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(None, fetch_info)
-        
-        token = uuid.uuid4().hex
-        SESS[token] = {"url": url, "info": info, "requested_by": m.from_user.id}
-        
-        await status.edit_text("Screenshots requested, starting download...")
-        asyncio.create_task(screenshot_task(token, SESS[token], status.chat.id, status.id))
-        
-    except Exception as e:
-        log.exception("fetch info for screenshots failed")
-        await status.edit_text(f"❌ Error fetching video info: {e}")
-        await send_log(f"Error fetching info for {url}: {e}")
+    url = m.text.split(None, 1)[1].strip()
+    await handle_incoming_url(m, url)
 
 @app.on_message(filters.text & filters.private)
 async def text_handler(c: Client, m: Message):
     if not is_allowed(m.from_user.id):
         await m.reply("⛔ You are not allowed to use this bot.")
         return
-    
     url = m.text.strip()
-    
-    # Check if the text is a valid URL
-    if not is_url(url):
-        await m.reply("❌ The provided URL is not valid.")
-        return
-    
-    status = await m.reply_text("🔎 Fetching formats, please wait...")
-    
+    await handle_incoming_url(m, url)
+
+async def handle_incoming_url(message: Message, url: str):
+    status = await message.reply_text("🔎 Fetching formats, please wait...")
     try:
-        def fetch_formats():
+        def fetch():
             opts = {"quiet": True, "skip_download": True, "no_warnings": True}
             with yt_dlp.YoutubeDL(opts) as ydl:
                 return ydl.extract_info(url, download=False)
         loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(None, fetch_formats)
-        
+        info = await loop.run_in_executor(None, fetch)
         formats = info.get("formats", []) or []
         video_formats = [f for f in formats if f.get("vcodec") != "none"]
         unique = {}
-        
         # build unique by height, prefer best tbr/filesize
         for f in video_formats:
             h = f.get("height") or 0
@@ -334,14 +257,12 @@ async def text_handler(c: Client, m: Message):
                 cur_score = (cur.get("filesize") or 0) + int((cur.get("tbr") or 0) * 1024)
             if not cur or score > cur_score:
                 unique[h] = f
-        
         choices = [unique[h] for h in sorted(unique.keys(), reverse=True)]
         if not choices:
             await status.edit_text("❌ No video formats found.")
             return
-            
         token = uuid.uuid4().hex
-        SESS[token] = {"url": url, "info": info, "requested_by": m.from_user.id}
+        SESS[token] = {"url": url, "info": info, "requested_by": message.from_user.id}
         kb = []
         for f in choices:
             h = f.get("height") or 0
@@ -349,9 +270,7 @@ async def text_handler(c: Client, m: Message):
             fmtid = f.get("format_id")
             kb.append([InlineKeyboardButton(label, callback_data=f"LEECH|{token}|{fmtid}")])
         kb.append([InlineKeyboardButton("Cancel ❌", callback_data=f"CANCEL|{token}")])
-        
         await status.edit_text("Select resolution:", reply_markup=InlineKeyboardMarkup(kb))
-        
     except Exception as e:
         log.exception("fetch formats failed")
         await status.edit_text(f"❌ Error fetching formats: {e}")
@@ -384,81 +303,7 @@ async def callback_handler(c: Client, cq: CallbackQuery):
     # kickoff pipeline in background
     asyncio.create_task(pipeline_task(token, sess, fmtid, status_msg.chat.id, status_msg.id))
 
-# ----------------- Pipeline & Tasks -----------------
-async def screenshot_task(token: str, session: Dict[str, Any], status_chat_id: int, status_msg_id: int):
-    url = session["url"]
-    tmpdir = Path(tempfile.mkdtemp(prefix="leech_ss_"))
-    try:
-        async def edit_status(text: str):
-            try:
-                await app.edit_message_text(status_chat_id, status_msg_id, text)
-            except Exception:
-                try:
-                    await app.send_message(status_chat_id, text)
-                except Exception:
-                    log.exception("Failed to send/edit status")
-        
-        loop = asyncio.get_running_loop()
-
-        # Download the video
-        await edit_status("⬇️ Downloading video for screenshots...")
-        outtmpl = str(tmpdir / "%(title).200s.%(ext)s")
-        ydl_opts = {
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best", # Select a reasonable format for speed and quality
-            "outtmpl": outtmpl,
-            "noplaylist": True,
-            "progress_hooks": [], # No progress bar for this quick download
-            "quiet": True,
-            "no_warnings": True,
-            "ffmpeg_location": str(Path(FFMPEG).parent) if FFMPEG else None,
-        }
-        
-        def run_ydl_for_ss():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                return ydl.extract_info(url, download=True)
-        
-        try:
-            info = await loop.run_in_executor(None, run_ydl_for_ss)
-        except Exception as e:
-            log.exception("yt-dlp failed for screenshots")
-            await edit_status(f"❌ yt-dlp failed to download video for screenshots: {e}")
-            return
-            
-        files = sorted([p for p in tmpdir.iterdir() if p.is_file()], key=lambda p: p.stat().st_size, reverse=True)
-        if not files:
-            await edit_status("❌ Download produced no files for screenshots.")
-            return
-            
-        video_file = files[0]
-        
-        # Generate screenshots
-        await edit_status("📸 Generating screenshots...")
-        screenshots = await get_screenshots(video_file, tmpdir)
-        
-        if not screenshots:
-            await edit_status("❌ Failed to generate any screenshots.")
-            return
-
-        # Upload screenshots
-        media = []
-        for ss_path in screenshots:
-            media.append(ss_path)
-            
-        await edit_status("⬆️ Uploading screenshots...")
-        # Send screenshots as an album
-        await app.send_media_group(status_chat_id, media)
-        
-        await edit_status("✅ All done. Screenshots uploaded.")
-        await send_log(f"Completed screenshot task for: {url}")
-        
-    finally:
-        try:
-            shutil.rmtree(tmpdir, ignore_errors=True)
-        except Exception:
-            pass
-        SESS.pop(token, None)
-
-
+# ----------------- Pipeline -----------------
 async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_chat_id: int, status_msg_id: int):
     url = session["url"]
     tmpdir = Path(tempfile.mkdtemp(prefix="leech_"))
@@ -561,7 +406,7 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
                 return
 
         # split if needed
-        size = src_for_split.st_size
+        size = src_for_split.stat().st_size
         if size > PART_MAX_BYTES:
             await edit_status(f"✂️ Splitting into parts (<= {PART_MAX_BYTES} bytes ~ {PART_MAX_GB} GiB)...")
             try:
@@ -608,10 +453,10 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
             try:
                 if part.suffix.lower() == ".mp4":
                     await app.send_video(chat, str(part), caption=f"Part {idx}/{total_parts} - {part.name}",
-                                         progress=upl_progress_cb, progress_args=(part.st_size,))
+                                         progress=upl_progress_cb, progress_args=(part.stat().st_size,))
                 else:
                     await app.send_document(chat, str(part), caption=f"Part {idx}/{total_parts} - {part.name}",
-                                            progress=upl_progress_cb, progress_args=(part.st_size,))
+                                            progress=upl_progress_cb, progress_args=(part.stat().st_size,))
                 # notify log chat
                 await send_log(f"✔️ Uploaded part {idx}/{total_parts}: {part.name}")
             except Exception as e:
