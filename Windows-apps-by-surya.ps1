@@ -72,6 +72,7 @@ $updateUrl = "https://clients2.google.com/service/update2/crx"
 $extensions = @(
     "epcnnfbjfcgphgdmggkamkmgojdagdnn", # uBlock Origin
     "bgnkhhnnamicmpeenaelnjfhikgbkllg", # Adguard Ad Blocker
+    "hlkenndednhfkekhgcdicdfddnkalmdm", #Cookie Editor
     #"ngpampappnmepgilojfohadhhmbhlaek",  # IDM Integration Module
     #"bbobopahenonfdgjgaleledndnnfhooj", # AB Download Manager
     "ahmpjcflkgiildlgicmcieglgoilbfdp"  # Free Download Manager
