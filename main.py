@@ -241,6 +241,7 @@ SESS: Dict[str, Dict[str, Any]] = {}  # token -> {url, info, requested_by}
 # ----------------- URL Validation -----------------
 URL_REGEX = re.compile(
     r"^(?:http|ftp)s?://"  # http:// or https://
+    r"(?!.*\b(?:eporner|eporner\.tv)\b)" # Exclude eporner domains
     r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
     r"localhost|"  # localhost...
     r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
@@ -269,6 +270,11 @@ async def screenshots_cmd(c: Client, m: Message):
         return
     url = m.command[1]
     
+    # Check if the text is a valid URL
+    if not is_url(url):
+        await m.reply("❌ The provided URL is not supported or invalid.")
+        return
+
     status = await m.reply_text("🔎 Fetching video info for screenshots...")
     
     try:
@@ -300,7 +306,7 @@ async def text_handler(c: Client, m: Message):
     
     # Check if the text is a valid URL
     if not is_url(url):
-        await m.reply("Please send a valid video URL.")
+        await m.reply("❌ The provided URL is not supported or invalid.")
         return
     
     status = await m.reply_text("🔎 Fetching formats, please wait...")
