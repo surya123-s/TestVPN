@@ -12,7 +12,6 @@ Features implemented:
 - All admin/log messages to TG_CHAT
 - Allowed users enforced via ALLOWED_USERS env variable (comma separated IDs)
 - Safe scheduling of threaded callbacks into the asyncio loop
-- /screenshot feature to get 7 video thumbnails with progress bar
 """
 
 import os
@@ -27,7 +26,6 @@ import asyncio
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-import re
 
 import yt_dlp
 from pyrogram import Client, filters
@@ -41,12 +39,12 @@ log = logging.getLogger("leech-bot")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH")
-TG_CHAT = os.environ.get("TG_CHAT", "")  # e.g. "-1001234567890" or "@channel"
+TG_CHAT = os.environ.get("TG_CHAT", "")
 ALLOWED_USERS = [s.strip() for s in os.environ.get("ALLOWED_USERS", "").split(",") if s.strip()]
 
 PART_MAX_GB = float(os.environ.get("PART_MAX_GB", "1.95"))
 PART_MAX_BYTES = int(PART_MAX_GB * (1024 ** 3))
-PROGRESS_INTERVAL = int(os.environ.get("PROGRESS_UPDATE_INTERVAL", "5"))  # seconds
+PROGRESS_INTERVAL = int(os.environ.get("PROGRESS_UPDATE_INTERVAL", "5")) # seconds
 
 # sanity checks
 if not BOT_TOKEN or not API_ID or not API_HASH or not TG_CHAT:
@@ -204,61 +202,17 @@ async def split_mp4_by_time(src: Path, out_dir: Path, max_bytes: int = PART_MAX_
             raise RuntimeError(f"Part too large after split: {p} ({p.stat().st_size})")
     return parts
 
-# ----------------- Screenshot helpers -----------------
-async def get_screenshots(video_path: Path, output_dir: Path, count: int = 7) -> List[Path]:
-    """Generates `count` screenshots from a video file."""
-    screenshots: List[Path] = []
-    try:
-        duration = await ffprobe_duration_seconds(video_path)
-        if duration <= 0:
-            raise RuntimeError("Could not determine video duration.")
-
-        interval = duration / (count + 1)
-
-        for i in range(1, count + 1):
-            timestamp = i * interval
-            output_file = output_dir / f"{video_path.stem}_ss_{i}.jpg"
-
-            # Use -ss before -i for faster seeking
-            cmd = [
-                FFMPEG, "-y", "-ss", str(timestamp), "-i", str(video_path),
-                "-vframes", "1", "-q:v", "2", str(output_file)
-            ]
-
-            code, out, err = await run_cmd(cmd)
-            if code == 0 and output_file.exists():
-                screenshots.append(output_file)
-            else:
-                log.error(f"Failed to generate screenshot at {timestamp}s: {err}")
-    except Exception as e:
-        log.exception(f"Screenshot generation failed: {e}")
-        return []
-
-    return screenshots
-
 # ----------------- Session store -----------------
 SESS: Dict[str, Dict[str, Any]] = {} # token -> {url, info, requested_by}
-
-# ----------------- URL Validation -----------------
-URL_REGEX = re.compile(
-    r"^(?:http|ftp)s?://"  # http:// or https://
-    r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
-    r"localhost|"  # localhost...
-    r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
-    r"(?::\d+)?"  # optional port
-    r"(?:/?|[/?]\S+)$", re.IGNORECASE)
-
-def is_url(text: str) -> bool:
-    return re.match(URL_REGEX, text) is not None
 
 # ----------------- Bot handlers -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_cmd(c: Client, m: Message):
-    await m.reply("Hello — send a video URL privately to get started or use /screenshot <url>.\nAllowed users only when configured.")
+    await m.reply("Hello — send a video URL privately or use /leech <url>.\nAllowed users only when configured.")
 
 @app.on_message(filters.command("help") & filters.private)
 async def help_cmd(c: Client, m: Message):
-    await m.reply("Send a video URL or use `/leech <url>`. Choose resolution button (up to 1080p). Use `/screenshot <url>` to get 7 screenshots from the video.")
+    await m.reply("Send a video URL or use `/leech <url>`. Choose resolution button (up to 1080p).")
 
 @app.on_message(filters.command("leech") & filters.private)
 async def leech_cmd(c: Client, m: Message):
@@ -271,46 +225,6 @@ async def leech_cmd(c: Client, m: Message):
     url = m.text.split(None, 1)[1].strip()
     await handle_incoming_url(m, url)
 
-@app.on_message(filters.command("screenshot") & filters.private)
-async def screenshots_cmd(c: Client, m: Message):
-    if not is_allowed(m.from_user.id):
-        await m.reply("⛔ You are not allowed to use this bot.")
-        return
-    if len(m.command) < 2:
-        await m.reply("Usage: /screenshot <url>")
-        return
-    url = m.command[1]
-
-    # Check if the text is a valid URL
-    if not is_url(url):
-        await m.reply("❌ The provided URL is not valid.")
-        return
-
-    status = await m.reply_text("🔎 Fetching video info for screenshots...")
-
-    try:
-        def fetch_info():
-            opts = {
-                "quiet": True,
-                "skip_download": True,
-                "no_warnings": True,
-            }
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(url, download=False)
-        loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(None, fetch_info)
-
-        token = uuid.uuid4().hex
-        SESS[token] = {"url": url, "info": info, "requested_by": m.from_user.id}
-
-        await status.edit_text("Screenshots requested, starting download...")
-        asyncio.create_task(screenshot_task(token, SESS[token], status.chat.id, status.id))
-
-    except Exception as e:
-        log.exception("fetch info for screenshots failed")
-        await status.edit_text(f"❌ Error fetching video info: {e}")
-        await send_log(f"Error fetching info for {url}: {e}")
-
 @app.on_message(filters.text & filters.private)
 async def text_handler(c: Client, m: Message):
     if not is_allowed(m.from_user.id):
@@ -320,10 +234,6 @@ async def text_handler(c: Client, m: Message):
     await handle_incoming_url(m, url)
 
 async def handle_incoming_url(message: Message, url: str):
-    if not is_url(url):
-        await message.reply("❌ The provided URL is not valid.")
-        return
-
     status = await message.reply_text("🔎 Fetching formats, please wait...")
     try:
         def fetch():
@@ -559,109 +469,6 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
         await send_log(f"Completed leech: {url} -> {len(parts)} parts")
     finally:
         # cleanup
-        try:
-            shutil.rmtree(tmpdir, ignore_errors=True)
-        except Exception:
-            pass
-        SESS.pop(token, None)
-
-async def screenshot_task(token: str, session: Dict[str, Any], status_chat_id: int, status_msg_id: int):
-    url = session["url"]
-    tmpdir = Path(tempfile.mkdtemp(prefix="ss_"))
-    try:
-        async def edit_status(text: str):
-            try:
-                await app.edit_message_text(status_chat_id, status_msg_id, text)
-            except Exception:
-                try:
-                    await app.send_message(status_chat_id, text)
-                except Exception:
-                    log.exception("Failed to send/edit status")
-
-        loop = asyncio.get_running_loop()
-
-        def ytdl_hook(d):
-            try:
-                st = d.get("status")
-                if st == "downloading":
-                    downloaded = d.get("downloaded_bytes") or 0
-                    total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
-                    speed = d.get("speed") or 0
-                    percent = (downloaded / total * 100) if total else 0.0
-                    key = f"ss_dl:{token}"
-                    if throttler.should(key):
-                        bar = make_progress_bar(percent, 10)
-                        text = (
-                            f"⬇️ Downloading clip for screenshots:\n"
-                            f"Progress: {bar} {percent:.2f}%\n"
-                            f"Speed: {speed / (1024*1024):.2f} MB/s"
-                        )
-                        coro = edit_status(text)
-                        loop.call_soon_threadsafe(asyncio.create_task, coro)
-                elif st == "finished":
-                    key = f"ss_dl:{token}:finished"
-                    if throttler.should(key):
-                        coro = edit_status("⬇️ Download finished. Generating screenshots...")
-                        loop.call_soon_threadsafe(asyncio.create_task, coro)
-            except Exception:
-                log.exception("ytdl hook error")
-
-        outtmpl = str(tmpdir / "%(title)s.%(ext)s")
-        # Download a small clip for screenshots
-        ydl_opts = {
-            "format": "best[ext=mp4]",
-            "outtmpl": outtmpl,
-            "noplaylist": True,
-            "download_sections": "[*0-60]",  # Download first 60 seconds
-            "progress_hooks": [ytdl_hook],
-            "quiet": True,
-            "no_warnings": True,
-            "ffmpeg_location": str(Path(FFMPEG).parent) if FFMPEG else None,
-        }
-
-        def run_ydl_ss():
-            try:
-                with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
-                    return ydl.extract_info(url, download=True)
-            except Exception:
-                raise
-
-        try:
-            info = await asyncio.get_event_loop().run_in_executor(None, run_ydl_ss)
-        except Exception as e:
-            log.exception("yt-dlp failed for screenshots")
-            await edit_status(f"❌ Failed to download clip for screenshots: {e}")
-            await send_log(f"Screenshot download failed for {url}: {e}")
-            return
-
-        files = [p for p in tmpdir.iterdir() if p.is_file() and p.suffix.lower() == '.mp4']
-        if not files:
-            await edit_status("❌ Downloaded clip produced no files.")
-            await send_log(f"No output file for screenshot download: {url}")
-            return
-        video_file = files[0]
-
-        await edit_status("📸 Generating screenshots...")
-        screenshots = await get_screenshots(video_file, tmpdir)
-
-        if not screenshots:
-            await edit_status("❌ Failed to generate any screenshots.")
-            await send_log(f"Screenshot generation failed for {video_file.name}")
-            return
-
-        await edit_status(f"📤 Uploading {len(screenshots)} screenshots...")
-
-        try:
-            for screenshot in screenshots:
-                await app.send_photo(status_chat_id, str(screenshot), caption=screenshot.name)
-            await edit_status("✅ All screenshots uploaded.")
-            await send_log(f"Completed screenshot generation for: {url}")
-        except Exception as e:
-            log.exception("upload screenshots failed")
-            await edit_status(f"❌ Failed to upload screenshots: {e}")
-            await send_log(f"Screenshot upload failed for {video_file.name}: {e}")
-
-    finally:
         try:
             shutil.rmtree(tmpdir, ignore_errors=True)
         except Exception:
