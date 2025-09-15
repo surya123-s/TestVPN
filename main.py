@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # main.py
 """
-Telegram Video Leech Bot - full, Windows/GHA compatible
+Telegram Video Leech Bot - with Progress Bars & Splitting
 
-Features:
-- Presents unique resolution buttons (up to 1080p)
-- Download selected format with yt-dlp (progress displayed, throttled 5s)
-- Remux to streamable MP4 (-movflags +faststart); fallback re-encode to H.264/AAC MP4
-- If final file > PART_MAX_GB (1.95 GiB) split by time using ffmpeg (streamable parts)
-- Upload parts sequentially as send_video (mp4) with upload progress (throttled 5s)
-- Logs and final files sent to TG_CHAT (env)
-- Allowed users enforced via ALLOWED_USERS (comma-separated IDs)
-- Robust scheduling of progress updates from threaded callbacks
+Features implemented:
+- Unique resolution buttons (up to 1080p)
+- Download via yt-dlp, progress bar + MB/s, updates throttled by PROGRESS_INTERVAL
+- Remux to streamable mp4, fallback re-encode to H264/AAC
+- Split > PART_MAX_GB into streamable mp4 parts (time-based) so each part <= PART_MAX_BYTES
+- Upload parts sequentially using send_video (mp4) with throttled upload progress updates
+- All admin/log messages to TG_CHAT
+- Allowed users enforced via ALLOWED_USERS env variable (comma separated IDs)
+- Safe scheduling of threaded callbacks into the asyncio loop
 """
 
 import os
@@ -23,6 +23,7 @@ import shutil
 import logging
 import tempfile
 import asyncio
+import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -30,7 +31,7 @@ import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery
 
-# ----------------- Configuration (env) -----------------
+# ----------------- Configuration -----------------
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger("leech-bot")
@@ -38,16 +39,14 @@ log = logging.getLogger("leech-bot")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH")
-TG_CHAT = os.environ.get("TG_CHAT", "")  # integer id (as string) or '@username'
+TG_CHAT = os.environ.get("TG_CHAT", "")             # e.g. "-1001234567890" or "@channel"
 ALLOWED_USERS = [s.strip() for s in os.environ.get("ALLOWED_USERS", "").split(",") if s.strip()]
 
-# maximum part bytes (default 1.95 GiB)
 PART_MAX_GB = float(os.environ.get("PART_MAX_GB", "1.95"))
 PART_MAX_BYTES = int(PART_MAX_GB * (1024 ** 3))
+PROGRESS_INTERVAL = int(os.environ.get("PROGRESS_UPDATE_INTERVAL", "5"))  # seconds
 
-# how often to update progress (seconds)
-PROGRESS_INTERVAL = int(os.environ.get("PROGRESS_UPDATE_INTERVAL", "5"))
-
+# sanity checks
 if not BOT_TOKEN or not API_ID or not API_HASH or not TG_CHAT:
     log.critical("BOT_TOKEN, API_ID, API_HASH and TG_CHAT must be set in environment")
     sys.exit(1)
@@ -55,7 +54,7 @@ if not BOT_TOKEN or not API_ID or not API_HASH or not TG_CHAT:
 # ----------------- Pyrogram client -----------------
 app = Client("leech-bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# ----------------- ffmpeg / ffprobe detection -----------------
+# ----------------- ffmpeg / ffprobe discovery -----------------
 def _which_any(names: List[str]) -> Optional[str]:
     for n in names:
         p = shutil.which(n)
@@ -70,7 +69,7 @@ def find_ffmpeg() -> str:
     choco_path = Path("C:/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe")
     if choco_path.exists():
         return str(choco_path)
-    raise RuntimeError("ffmpeg not found. Install ffmpeg or add to PATH.")
+    raise RuntimeError("ffmpeg not found. Install ffmpeg or add it to PATH")
 
 def find_ffprobe() -> str:
     p = _which_any(["ffprobe", "ffprobe.exe"])
@@ -79,14 +78,20 @@ def find_ffprobe() -> str:
     choco_path = Path("C:/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffprobe.exe")
     if choco_path.exists():
         return str(choco_path)
-    raise RuntimeError("ffprobe not found. Install ffmpeg or add to PATH.")
+    raise RuntimeError("ffprobe not found. Install ffprobe or add it to PATH")
 
-FFMPEG = find_ffmpeg()
-FFPROBE = find_ffprobe()
-log.info("ffmpeg: %s, ffprobe: %s", FFMPEG, FFPROBE)
+try:
+    FFMPEG = find_ffmpeg()
+    FFPROBE = find_ffprobe()
+    log.info("ffmpeg: %s, ffprobe: %s", FFMPEG, FFPROBE)
+except Exception as e:
+    log.warning("ffmpeg/ffprobe not found: %s - some operations will fail if ffmpeg is missing", e)
+    FFMPEG = "ffmpeg"
+    FFPROBE = "ffprobe"
 
 # ----------------- Utilities -----------------
 def is_allowed(uid: int) -> bool:
+    # if ALLOWED_USERS empty -> allow everyone
     if not ALLOWED_USERS:
         return True
     return str(uid) in ALLOWED_USERS or str(uid) == str(TG_CHAT)
@@ -98,94 +103,24 @@ async def send_log(text: str):
     except Exception:
         log.exception("Failed to send admin log")
 
-def unique_formats_by_resolution(formats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    From yt-dlp format list take single best candidate per numeric height (<=1080).
-    """
-    by_h: Dict[int, Dict[str, Any]] = {}
-    for f in formats:
-        if f.get("vcodec") == "none":
-            continue
-        h = f.get("height") or 0
-        if h > 1080:
-            continue
-        cur = by_h.get(h)
-        score = (f.get("filesize") or 0) + int((f.get("tbr") or 0) * 1024)
-        cur_score = 0
-        if cur:
-            cur_score = (cur.get("filesize") or 0) + int((cur.get("tbr") or 0) * 1024)
-        if not cur or score > cur_score:
-            by_h[h] = f
-    # return descending order (bigger first)
-    return [by_h[h] for h in sorted(by_h.keys(), reverse=True)]
+def make_progress_bar(pct: float, length: int = 10) -> str:
+    filled = int(round(length * pct / 100))
+    filled = max(0, min(length, filled))
+    empty = length - filled
+    return "▰" * filled + "▱" * empty
 
-# ----------------- Subprocess helpers (async) -----------------
-async def run_cmd(cmd: List[str], cwd: Optional[str] = None, timeout: Optional[int] = None):
-    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=cwd)
-    try:
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        raise
-    return proc.returncode, out.decode(errors="ignore"), err.decode(errors="ignore")
+def human_size_bytes(n: int) -> str:
+    if not n:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    i = 0
+    value = float(n)
+    while value >= 1024 and i < len(units)-1:
+        value /= 1024.0
+        i += 1
+    return f"{value:.2f} {units[i]}"
 
-async def remux_to_streamable(src: Path, dst: Path):
-    cmd = [FFMPEG, "-y", "-i", str(src), "-c", "copy", "-movflags", "+faststart", str(dst)]
-    code, out, err = await run_cmd(cmd)
-    if code != 0:
-        raise RuntimeError(f"ffmpeg remux failed: {err}")
-
-async def reencode_to_h264_aac(src: Path, dst: Path):
-    cmd = [FFMPEG, "-y", "-i", str(src),
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-           "-c:a", "aac", "-b:a", "128k",
-           "-movflags", "+faststart",
-           str(dst)]
-    code, out, err = await run_cmd(cmd)
-    if code != 0:
-        raise RuntimeError(f"ffmpeg reencode failed: {err}")
-
-async def ffprobe_duration(path: Path) -> float:
-    cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration",
-           "-of", "default=noprint_wrappers=1:nokey=1", str(path)]
-    code, out, err = await run_cmd(cmd)
-    if code != 0 or not out.strip():
-        return 0.0
-    try:
-        return float(out.strip())
-    except Exception:
-        return 0.0
-
-async def split_mp4_by_time(src: Path, dest_dir: Path, max_bytes: int = PART_MAX_BYTES) -> List[Path]:
-    size = src.stat().st_size
-    if size <= max_bytes:
-        return [src]
-    duration = await ffprobe_duration(src)
-    if duration <= 0:
-        raise RuntimeError("ffprobe couldn't get duration for splitting")
-    bytes_per_sec = size / duration
-    seg_secs = max(5, int(math.floor(max_bytes / bytes_per_sec)))
-    if seg_secs <= 0:
-        seg_secs = 10
-    parts: List[Path] = []
-    total_secs = int(math.ceil(duration))
-    idx = 0
-    for start in range(0, total_secs, seg_secs):
-        idx += 1
-        out_file = dest_dir / f"{src.stem}.part{idx:02d}.mp4"
-        cmd = [FFMPEG, "-y", "-ss", str(start), "-i", str(src), "-t", str(seg_secs), "-c", "copy", "-movflags", "+faststart", str(out_file)]
-        code, out, err = await run_cmd(cmd)
-        if code != 0:
-            raise RuntimeError(f"ffmpeg split failed at {start}s: {err}")
-        parts.append(out_file)
-    # sanity: ensure each part <= max + slack
-    for p in parts:
-        if p.stat().st_size > max_bytes + 1024 * 1024:
-            raise RuntimeError(f"Part too large after split: {p} ({p.stat().st_size})")
-    return parts
-
-# ----------------- Progress throttler (shared) -----------------
+# ----------------- Throttler -----------------
 class Throttler:
     def __init__(self, interval_sec: int = PROGRESS_INTERVAL):
         self.interval = interval_sec
@@ -201,20 +136,86 @@ class Throttler:
 
 throttler = Throttler(PROGRESS_INTERVAL)
 
+# ----------------- Split / remux helpers -----------------
+async def run_cmd(cmd: List[str], cwd: Optional[str] = None, timeout: Optional[int] = None):
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=cwd)
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise
+    return proc.returncode, out.decode(errors="ignore"), err.decode(errors="ignore")
+
+async def remux_to_streamable_mp4(src: Path, dst: Path):
+    cmd = [FFMPEG, "-y", "-i", str(src), "-c", "copy", "-movflags", "+faststart", str(dst)]
+    code, out, err = await run_cmd(cmd)
+    if code != 0:
+        raise RuntimeError(f"ffmpeg remux failed: {err}")
+
+async def reencode_to_h264_aac(src: Path, dst: Path):
+    cmd = [FFMPEG, "-y", "-i", str(src),
+           "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+           "-c:a", "aac", "-b:a", "128k",
+           "-movflags", "+faststart",
+           str(dst)]
+    code, out, err = await run_cmd(cmd)
+    if code != 0:
+        raise RuntimeError(f"ffmpeg re-encode failed: {err}")
+
+async def ffprobe_duration_seconds(path: Path) -> float:
+    cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration",
+           "-of", "default=noprint_wrappers=1:nokey=1", str(path)]
+    code, out, err = await run_cmd(cmd)
+    if code != 0 or not out.strip():
+        return 0.0
+    try:
+        return float(out.strip())
+    except Exception:
+        return 0.0
+
+async def split_mp4_by_time(src: Path, out_dir: Path, max_bytes: int = PART_MAX_BYTES) -> List[Path]:
+    size = src.stat().st_size
+    if size <= max_bytes:
+        return [src]
+    duration = await ffprobe_duration_seconds(src)
+    if duration <= 0:
+        raise RuntimeError("Cannot determine duration for splitting (ffprobe returned 0)")
+    bytes_per_sec = size / duration
+    seg_secs = max(5, int(math.floor(max_bytes / bytes_per_sec)))
+    if seg_secs <= 0:
+        seg_secs = 10
+    parts: List[Path] = []
+    total_secs = int(math.ceil(duration))
+    idx = 0
+    for start in range(0, total_secs, seg_secs):
+        idx += 1
+        out_file = out_dir / f"{src.stem}.part{idx:02d}.mp4"
+        cmd = [FFMPEG, "-y", "-ss", str(start), "-i", str(src), "-t", str(seg_secs), "-c", "copy", "-movflags", "+faststart", str(out_file)]
+        code, out, err = await run_cmd(cmd)
+        if code != 0:
+            raise RuntimeError(f"ffmpeg split failed at {start}s: {err}")
+        parts.append(out_file)
+    # sanity
+    for p in parts:
+        if p.stat().st_size > max_bytes + 1024 * 1024:
+            raise RuntimeError(f"Part too large after split: {p} ({p.stat().st_size})")
+    return parts
+
 # ----------------- Session store -----------------
-SESS: Dict[str, Dict[str, Any]] = {}  # token -> info
+SESS: Dict[str, Dict[str, Any]] = {}  # token -> {url, info, requested_by}
 
 # ----------------- Bot handlers -----------------
 @app.on_message(filters.command("start") & filters.private)
-async def start_cmd(_, m: Message):
-    await m.reply("Hello — send a video URL (private). Use /leech <url> too.\nOnly allowed users can use the bot (if configured).")
+async def start_cmd(c: Client, m: Message):
+    await m.reply("Hello — send a video URL privately or use /leech <url>.\nAllowed users only when configured.")
 
 @app.on_message(filters.command("help") & filters.private)
-async def help_cmd(_, m: Message):
-    await m.reply("Send URL or /leech <url>. Then choose a resolution button (up to 1080p).")
+async def help_cmd(c: Client, m: Message):
+    await m.reply("Send a video URL or use `/leech <url>`. Choose resolution button (up to 1080p).")
 
 @app.on_message(filters.command("leech") & filters.private)
-async def leech_cmd(_, m: Message):
+async def leech_cmd(c: Client, m: Message):
     if not is_allowed(m.from_user.id):
         await m.reply("⛔ You are not allowed to use this bot.")
         return
@@ -225,7 +226,7 @@ async def leech_cmd(_, m: Message):
     await handle_incoming_url(m, url)
 
 @app.on_message(filters.text & filters.private)
-async def text_handler(_, m: Message):
+async def text_handler(c: Client, m: Message):
     if not is_allowed(m.from_user.id):
         await m.reply("⛔ You are not allowed to use this bot.")
         return
@@ -243,17 +244,29 @@ async def handle_incoming_url(message: Message, url: str):
         info = await loop.run_in_executor(None, fetch)
         formats = info.get("formats", []) or []
         video_formats = [f for f in formats if f.get("vcodec") != "none"]
-        unique = unique_formats_by_resolution(video_formats)
-        if not unique:
+        unique = {}
+        # build unique by height, prefer best tbr/filesize
+        for f in video_formats:
+            h = f.get("height") or 0
+            if h > 1080:
+                continue
+            cur = unique.get(h)
+            score = (f.get("filesize") or 0) + int((f.get("tbr") or 0) * 1024)
+            cur_score = 0
+            if cur:
+                cur_score = (cur.get("filesize") or 0) + int((cur.get("tbr") or 0) * 1024)
+            if not cur or score > cur_score:
+                unique[h] = f
+        choices = [unique[h] for h in sorted(unique.keys(), reverse=True)]
+        if not choices:
             await status.edit_text("❌ No video formats found.")
             return
         token = uuid.uuid4().hex
         SESS[token] = {"url": url, "info": info, "requested_by": message.from_user.id}
-        # build keyboard: one button per resolution
         kb = []
-        for f in unique:
+        for f in choices:
             h = f.get("height") or 0
-            label = f"{h}p" if h > 0 else (f.get("format_note") or "auto")
+            label = f"{h}p" if h else "auto"
             fmtid = f.get("format_id")
             kb.append([InlineKeyboardButton(label, callback_data=f"LEECH|{token}|{fmtid}")])
         kb.append([InlineKeyboardButton("Cancel ❌", callback_data=f"CANCEL|{token}")])
@@ -264,7 +277,7 @@ async def handle_incoming_url(message: Message, url: str):
         await send_log(f"Error fetching formats for {url}: {e}")
 
 @app.on_callback_query()
-async def callback_handler(_, cq: CallbackQuery):
+async def callback_handler(c: Client, cq: CallbackQuery):
     data = cq.data or ""
     user_id = cq.from_user.id
     if not is_allowed(user_id):
@@ -285,32 +298,29 @@ async def callback_handler(_, cq: CallbackQuery):
         await cq.answer("Session expired", show_alert=True)
         return
     url = sess["url"]
-    # reply queued and capture status message id
     status_msg = await cq.message.reply_text(f"Queued: {url}\nFormat: {fmtid}")
     await cq.answer("Queued")
-    # run pipeline in background
+    # kickoff pipeline in background
     asyncio.create_task(pipeline_task(token, sess, fmtid, status_msg.chat.id, status_msg.id))
 
 # ----------------- Pipeline -----------------
 async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_chat_id: int, status_msg_id: int):
     url = session["url"]
-    requested_by = session.get("requested_by")
     tmpdir = Path(tempfile.mkdtemp(prefix="leech_"))
     try:
-        # helper to edit status (coroutine)
         async def edit_status(text: str):
             try:
-                await app.edit_message_text(chat_id=status_chat_id, message_id=status_msg_id, text=text)
+                await app.edit_message_text(status_chat_id, status_msg_id, text)
             except Exception:
                 try:
                     await app.send_message(status_chat_id, text)
                 except Exception:
-                    log.exception("Both edit_message_text and send_message failed")
+                    log.exception("Failed to send/edit status")
 
-        # prepare loop to schedule from hooks running in threads
+        # running loop used for scheduling from threads
         loop = asyncio.get_running_loop()
 
-        # yt-dlp progress hook (runs in executor thread) -> schedule onto event loop safely
+        # --- yt-dlp hook (called from executor thread) ---
         def ytdl_hook(d):
             try:
                 st = d.get("status")
@@ -322,8 +332,13 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
                     percent = (downloaded / total * 100) if total else 0.0
                     key = f"dl:{token}"
                     if throttler.should(key):
-                        text = f"⬇️ Downloading: {d.get('filename','')}\n{percent:.2f}% • {downloaded//1024} KB / {total//1024 if total else 0} KB\nSpeed: {int(speed)//1024 if speed else 0} KB/s • ETA: {int(eta)}s"
-                        # schedule coroutine on main loop thread
+                        bar = make_progress_bar(percent, 10)
+                        text = (
+                            f"⬇️ Downloading: {d.get('filename','')}\n"
+                            f"Progress: {bar} {percent:.2f}%\n"
+                            f"{downloaded / (1024*1024):.2f} MB / {total / (1024*1024):.2f} MB\n"
+                            f"Speed: {speed / (1024*1024):.2f} MB/s • ETA: {int(eta)}s"
+                        )
                         coro = edit_status(text)
                         loop.call_soon_threadsafe(asyncio.create_task, coro)
                 elif st == "finished":
@@ -332,10 +347,8 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
                         coro = edit_status("⬇️ Download finished. Finalizing...")
                         loop.call_soon_threadsafe(asyncio.create_task, coro)
             except Exception:
-                # avoid raising inside executor thread
                 log.exception("ytdl hook error")
 
-        # run yt-dlp in executor
         outtmpl = str(tmpdir / "%(title).200s.%(ext)s")
         ydl_opts = {
             "format": fmtid,
@@ -344,12 +357,17 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
             "progress_hooks": [ytdl_hook],
             "quiet": True,
             "no_warnings": True,
-            "ffmpeg_location": str(Path(FFMPEG).parent),
+            # ffmpeg location optional: use parent folder of FFMPEG if available
+            "ffmpeg_location": str(Path(FFMPEG).parent) if FFMPEG else None,
         }
 
         def run_ydl():
-            with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
-                return ydl.extract_info(url, download=True)
+            try:
+                with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
+                    return ydl.extract_info(url, download=True)
+            except Exception as e:
+                # re-raise to executor
+                raise
 
         try:
             info = await asyncio.get_event_loop().run_in_executor(None, run_ydl)
@@ -359,7 +377,7 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
             await send_log(f"yt-dlp failed for {url}: {e}")
             return
 
-        # find downloaded file(s)
+        # find downloaded files
         files = sorted([p for p in tmpdir.iterdir() if p.is_file()], key=lambda p: p.stat().st_size, reverse=True)
         if not files:
             await edit_status("❌ Download produced no files.")
@@ -368,29 +386,29 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
         downloaded = files[0]
         await edit_status(f"⬇️ Download complete: {downloaded.name}")
 
-        # ensure streamable mp4
+        # remux or re-encode to streamable mp4
         remuxed = tmpdir / f"{downloaded.stem}.streamable.mp4"
         src_for_split = downloaded
         try:
             await edit_status("🔧 Remuxing to streamable MP4...")
-            await remux_to_streamable(downloaded, remuxed)
+            await remux_to_streamable_mp4(downloaded, remuxed)
             src_for_split = remuxed
         except Exception:
-            await edit_status("⚠️ Remux failed, re-encoding (slower)...")
+            await edit_status("⚠️ Remux failed — attempting re-encode (slower)...")
             try:
-                reenc = tmpdir / f"{downloaded.stem}.reenc.mp4"
-                await reencode_to_h264_aac(downloaded, reenc)
-                src_for_split = reenc
+                reencoded = tmpdir / f"{downloaded.stem}.reenc.mp4"
+                await reencode_to_h264_aac(downloaded, reencoded)
+                src_for_split = reencoded
             except Exception as e:
                 log.exception("re-encode failed")
                 await edit_status(f"❌ Remux & re-encode both failed: {e}")
                 await send_log(f"Remux/reencode failed for {downloaded}: {e}")
                 return
 
-        # split if bigger than allowed
+        # split if needed
         size = src_for_split.stat().st_size
         if size > PART_MAX_BYTES:
-            await edit_status(f"✂️ Splitting into parts (<= {PART_MAX_BYTES} bytes)...")
+            await edit_status(f"✂️ Splitting into parts (<= {PART_MAX_BYTES} bytes ~ {PART_MAX_GB} GiB)...")
             try:
                 parts = await split_mp4_by_time(src_for_split, tmpdir, max_bytes=PART_MAX_BYTES)
             except Exception as e:
@@ -401,43 +419,50 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
         else:
             parts = [src_for_split]
 
-        # upload parts sequentially
+        # upload parts sequentially with progress
         total_parts = len(parts)
+        chat = int(TG_CHAT) if str(TG_CHAT).lstrip("-").isdigit() else TG_CHAT
+
         for idx, part in enumerate(parts, start=1):
             await edit_status(f"📤 Uploading part {idx}/{total_parts}: {part.name}")
-            # make progress callback — Pyrogram may call it in a different thread — schedule edits via loop.call_soon_threadsafe
+            # track start time for speed estimate
+            start_time = time.monotonic()
             last_key = f"upl:{token}:{part.name}"
 
             def upl_progress_cb(current, total, *args):
                 try:
                     if not total:
                         return
+                    pct = (current / total) * 100
                     if throttler.should(last_key):
-                        pct = (current / total) * 100
-                        txt = f"⬆️ Uploading part {idx}/{total_parts}: {part.name}\n{pct:.2f}% • {current//1024} KB / {total//1024} KB"
+                        bar = make_progress_bar(pct, 10)
+                        elapsed = max(0.0001, time.monotonic() - start_time)
+                        # average speed since start
+                        speed_mb_s = (current / elapsed) / (1024 * 1024)
+                        txt = (
+                            f"⬆️ Uploading part {idx}/{total_parts}: {part.name}\n"
+                            f"Progress: {bar} {pct:.2f}%\n"
+                            f"{current / (1024*1024):.2f} MB / {total / (1024*1024):.2f} MB\n"
+                            f"Speed: {speed_mb_s:.2f} MB/s"
+                        )
                         coro = edit_status(txt)
                         loop.call_soon_threadsafe(asyncio.create_task, coro)
                 except Exception:
                     log.exception("upload progress cb error")
 
-            # try to use send_video for mp4 (better for streaming/playback)
             try:
-                chat = int(TG_CHAT) if str(TG_CHAT).lstrip("-").isdigit() else TG_CHAT
                 if part.suffix.lower() == ".mp4":
                     await app.send_video(chat, str(part), caption=f"Part {idx}/{total_parts} - {part.name}",
                                          progress=upl_progress_cb, progress_args=(part.stat().st_size,))
                 else:
                     await app.send_document(chat, str(part), caption=f"Part {idx}/{total_parts} - {part.name}",
                                             progress=upl_progress_cb, progress_args=(part.stat().st_size,))
-                # notify admin/log
-                await send_log(f"Uploaded part {idx}/{total_parts}: {part.name}")
+                # notify log chat
+                await send_log(f"✔️ Uploaded part {idx}/{total_parts}: {part.name}")
             except Exception as e:
                 log.exception("upload failed")
-                try:
-                    await edit_status(f"❌ Upload failed for {part.name}: {e}")
-                    await send_log(f"Upload failed for {part.name}: {e}")
-                except Exception:
-                    pass
+                await edit_status(f"❌ Upload failed for {part.name}: {e}")
+                await send_log(f"Upload failed for {part.name}: {e}")
                 return
 
         await edit_status(f"✅ All done. Uploaded {len(parts)} file(s).")
@@ -445,10 +470,9 @@ async def pipeline_task(token: str, session: Dict[str, Any], fmtid: str, status_
     finally:
         # cleanup
         try:
-            shutil.rmtree(tmpdir)
+            shutil.rmtree(tmpdir, ignore_errors=True)
         except Exception:
             pass
-        # remove session
         SESS.pop(token, None)
 
 # ----------------- Run -----------------
