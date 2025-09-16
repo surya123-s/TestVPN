@@ -25,15 +25,10 @@ jobs:
 
       # Keep the job alive
       sleep 3600
-
       
-    steps:
-    - name: Hold the runner live
-      run: |
-            echo "This job will stay live for up to 6 hours..."
-            # The loop will keep the job running by delaying for 5-minute intervals.
-            # It's set to run for 360 minutes total, but the loop is a safeguard.
-            for ((i=0; i<360; i+=5)); do
-            echo "Runner is still live. Remaining time: $((360 - i)) minutes"
-            sleep 300
-            done
+      while ($true) {
+             Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+             Start-Sleep -Seconds 300
+          }
+      
+   
