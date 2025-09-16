@@ -98,10 +98,10 @@ jobs:
           Write-Host "Password: Surya@12345RDP"
           Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f +clipboard /sound"
           Write-Host "For low network or best performance use this command :"
-          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /fast-path /network:modem /bpp:16 /compression /gfx:rfx /codec-cache:per-session /sound:sys:alsa /clipboard"
+          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /fast-path /network:modem /bpp:16 /compression /gfx:rfx /codec-cache:per-session /sound:sys:alsa /wallpaper /clipboard"
           Write-Host "==================`n"
 
           while ($true) {
-          Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-          Start-Sleep -Seconds 300
+             Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+             Start-Sleep -Seconds 300
           }
