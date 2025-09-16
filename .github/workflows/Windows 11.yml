@@ -92,14 +92,32 @@ jobs:
 
       - name: Maintain Connection (For 6 Hrs only)
         run: |
-          Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: cyberpunk"
-          Write-Host "Password: Surya@12345RDP"
-          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f +clipboard /sound:sys:alsa"
-          Write-Host "For low network or best performance use this command :"
-          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /fast-path /network:modem /bpp:16 /compression /gfx:rfx /codec-cache:per-session /sound:sys:alsa /wallpaper /clipboard"
-          Write-Host "==================`n"
+          Write-Host "┌───────────────────────────────────────────────┐"
+          Write-Host "│                RDP ACCESS                     │"
+          Write-Host "├──────────────┬────────────────────────────────┤"
+          Write-Host "│ Address      │ $env:TAILSCALE_IP              │"
+          Write-Host "│ Username     │ cyberpunk                      │"
+          Write-Host "│ Password     │ Surya@12345RDP                 │"
+          Write-Host "├──────────────┴────────────────────────────────┤"
+          Write-Host "│ For CLI Runner: sudo pacman -S xfreerdp       │"
+          Write-Host "├───────────────────────────────────────────────┤"
+          Write-Host "│  High Bandwidth:                              │"
+          Write-Host "│  xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk \ │"
+          Write-Host "│  /p:Surya@12345RDP /f +clipboard /sound       │"
+          Write-Host "├───────────────────────────────────────────────┤"
+          Write-Host "│  Low Bandwidth:                               │"
+          Write-Host "│  xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk \ │"
+          Write-Host "│  /p:Surya@12345RDP /f /fast-path /network:modem│"
+          Write-Host "├───────────────────────────────────────────────┤"
+          Write-Host "│  For Arch+Hyperland Users: Copy all 4 lines   │"
+          $rdp_command = @"
+          env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb \
+          xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:'Surya@12345RDP' /f \
+          /gfx-h264 /rfx /network:auto /compression /jpeg \
+          /sound:sys:alsa +clipboard /frame-ack:1
+          "@
+          Write-Host $rdp_command
+          Write-Host "└───────────────────────────────────────────────┘"
 
           while ($true) {
              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
