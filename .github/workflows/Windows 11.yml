@@ -8,7 +8,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 4320   # 72 hours
 
-    steps:
+  steps:
       - name: Configure Core RDP Settings
         run: |
           # Enable Remote Desktop and disable Network Level Authentication
