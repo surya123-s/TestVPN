@@ -95,15 +95,15 @@ jobs:
     Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /clipboard /sound"
     Write-Host "=================="
     Write-Host "For low network or best performance use this command :"
-    #Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /fast-path /network:modem /bpp:16 /compression /gfx:rfx /codec-cache:per-session /sound:sys:alsa /clipboard"
+    Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /fast-path /network:modem /bpp:16 /compression /gfx:rfx /codec-cache:per-session /sound:sys:alsa /clipboard"
     Write-Host "=================="
     Write-Host "=====  And For Arch+Hyperland User  ======="
-    Write-Host "==================`n"
+    Write-Host "=================="
     Write-Host "=== For Lower Internet connection ===="
     Write-Host "env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb `"
     Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:'Surya@12345RDP' /f `"
     Write-Host "/gfx-h264 /rfx /network:auto /compression /jpeg `"
-    Write-Host "/sound:sys:alsa +clipboard /frame-ack:1"
+    Write-Host "/sound:sys:alsa +clipboard /frame-ack:1 `n"
 
     while ($true) {
         Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
