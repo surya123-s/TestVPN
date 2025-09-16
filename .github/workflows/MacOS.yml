@@ -60,3 +60,8 @@ jobs:
           echo "Open this in your browser (while connected to Tailscale):"
           echo "    http://<Tailscale-IP>:6080/vnc.html"
           echo "======================================="
+      # 4. Keep runner alive (6 hours max)
+      - name: Keep Alive
+        run: |
+          echo "Keeping macOS desktop alive for 6 hours..."
+          sleep 21600
