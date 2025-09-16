@@ -1,42 +1,67 @@
-name: macOS GitHub Runner with Tailscale + VNC
+name: macOS Desktop with Browser Access (noVNC + Tailscale)
 
 on:
   workflow_dispatch:
 
 jobs:
-  macos-vnc:
+  macos-desktop:
     runs-on: macos-latest
+    timeout-minutes: 360   # 6 hours max runtime
+
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
+      # 1. Install Tailscale
       - name: Install Tailscale
         run: |
           brew install tailscale
-          sudo /opt/homebrew/opt/tailscale/bin/tailscaled --state=mem: &
+
+      - name: Start Tailscale
+        run: |
+          sudo tailscaled > /tmp/tailscaled.log 2>&1 &
           sleep 5
-          sudo tailscale up --auth-key=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=github-macos
 
-      - name: Enable Screen Sharing (VNC)
+      # 2. Authenticate Tailscale (auth key stored in repo secrets)
+      - name: Authenticate to Tailscale
         run: |
-          # Set VNC password (change this or use a secret!)
-          VNC_PASS="mypassword"
-          echo "$VNC_PASS" | security add-generic-password -a $USER -s vnc-password -w
-          # Enable ARD (Apple Remote Desktop)
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -activate -configure -access -on -users $USER -privs -all -restart -agent -menu
-          # Enable VNC password auth
-          sudo defaults write /Library/Preferences/com.apple.VNCSettings VNCAlwaysStartOnConsole -bool true
-          echo "$VNC_PASS" | iconv -t UTF-16LE | openssl md5 -binary | xxd -p | tr -d '\n' | sudo tee /Library/Preferences/com.apple.VNCSettings.plist >/dev/null
-          echo "VNC enabled with password: $VNC_PASS"
+          sudo tailscale up --ssh --hostname=github-macos --accept-routes --authkey=${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Show Tailscale IP
+      - name: Show Tailscale Status
         run: |
-          echo "========== Tailscale Node Info =========="
-          tailscale ip
-          echo "========================================="
-          echo "Connect using: vnc://<tailscale-ip>:5900"
-          echo "Password: mypassword"
- 
-      - name: Keep session alive (6 hours)
-        run: sleep 21600
+          echo "Tailscale IPv4:"
+          tailscale ip -4
+          tailscale status
+
+      # 3. Install Desktop + VNC + noVNC
+      - name: Install noVNC stack
+        run: |
+          brew install xquartz
+          brew install x11vnc
+          brew install websockify
+          git clone https://github.com/novnc/noVNC.git ~/noVNC
+
+      # 4. Start Virtual Display + VNC + noVNC
+      - name: Start Desktop Services
+        run: |
+          # Start a virtual X11 display
+          nohup Xvfb :1 -screen 0 1280x720x24 > /tmp/xvfb.log 2>&1 &
+          export DISPLAY=:1
+
+          # Start x11vnc server
+          x11vnc -display :1 -nopw -forever -rfbport 5901 > /tmp/x11vnc.log 2>&1 &
+
+          # Start noVNC (websockify runs on port 6080)
+          ~/noVNC/utils/novnc_proxy --vnc localhost:5901 --listen 6080 > /tmp/novnc.log 2>&1 &
+
+          echo "Services started!"
+
+      # 5. Print Access Info
+      - name: Access Information
+        run: |
+          echo "======================================="
+          echo "✅ noVNC is running!"
+          echo "Open browser on any device (with Tailscale enabled):"
+          echo "    http://<Tailscale-IP>:6080/vnc.html"
+          echo "Login → No password required (demo setup)"
+          echo "======================================="
