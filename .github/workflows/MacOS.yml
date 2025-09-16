@@ -8,7 +8,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 360 # This is the maximum allowed duration for a GitHub-hosted runner
 
-  steps:  
+steps:  
   - name: Set up Remote Access on macOS
     run: |
       # Install VNC server using Homebrew
@@ -25,7 +25,7 @@ jobs:
 
       # Keep the job alive
       sleep 3600
-      
+
       while ($true) {
              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
              Start-Sleep -Seconds 300
