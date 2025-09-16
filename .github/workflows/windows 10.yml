@@ -80,7 +80,7 @@ jobs:
           Invoke-WebRequest -Uri $scriptUrl -OutFile $localPath -UseBasicParsing
           powershell -ExecutionPolicy Bypass -File $localPath
 
-      - name: Maintain Connection (For 6 Hrs only)
+      - name: RDP Credentials 
         run: |
           Write-Host "=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
@@ -89,7 +89,7 @@ jobs:
           Write-Host "=================="
           Write-Host "=====  If you want CLI runner  ========"
           Write-Host "====  Then install xfreerdp first (else use Remmina) ======="
-          Write-Host "Command => sudo pacman -S xfreerdp "
+          Write-Host "Command =====> sudo pacman -S xfreerdp "
           Write-Host "=== Now You Can use Below Commands ==="
           Write-Host "=== If you have higher bandwidth network then use this ====="
           Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f +clipboard /sound"
