@@ -9,26 +9,28 @@ jobs:
     timeout-minutes: 360 # This is the maximum allowed duration for a GitHub-hosted runner
 
     steps:  
-     - name: Set up Remote Access on macOS
+      - name: Set up Remote Access on macOS
         run: |
-      # Install VNC server using Homebrew
-      brew install --cask vnc-server
-
-      # Start the VNC server in the background
-      vncserver -localhost no :1
-
-      # Get and print the Tailscale IP
-      ts_ip=$(tailscale ip -4)
-      echo "TAILSCALE_IP=$ts_ip" >> $GITHUB_ENV
-
-      echo "VNC Server is running on $ts_ip"
-
-      # Keep the job alive
-      sleep 3600
-
-      while ($true) {
-             Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-             Start-Sleep -Seconds 300
-          }
-      
-   
+          # Install a VNC server using Homebrew
+          brew install --cask vnc-server
+          
+          # Configure and start the VNC server in the background
+          # Note: This requires an interactive setup. You may need to pre-configure it
+          # or use a different VNC server that can be configured non-interactively.
+          vncserver -localhost no :1 &
+          
+          # Install Tailscale
+          brew install tailscale
+          
+          # Authenticate with Tailscale (replace with your auth key)
+          tailscale up --authkey=${{ secrets.TAILSCALE_PREAUTHKEY }}
+          
+          # Get and print the Tailscale IP
+          ts_ip=$(tailscale ip -4)
+          echo "TAILSCALE_IP=$ts_ip" >> $GITHUB_ENV
+          
+          echo "VNC Server is running on $ts_ip"
+          
+          # Keep the job alive for 6 hours
+          echo "Holding runner live for 6 hours..."
+          sleep 21600 # 6 hours in seconds
