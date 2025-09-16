@@ -99,7 +99,6 @@ jobs:
           Write-Host "=================="
           Write-Host "=====  And For Arch+Hyperland Users  ======="
           Write-Host "=== For Lower Internet connection ===="
-          
           Write-Host "env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb \"
           Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:'Surya@12345RDP' /f \"
           Write-Host "/gfx-h264 /rfx /network:auto /compression /jpeg \"
