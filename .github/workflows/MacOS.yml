@@ -9,28 +9,36 @@ jobs:
     timeout-minutes: 360 # This is the maximum allowed duration for a GitHub-hosted runner
 
     steps:  
-      - name: Set up Remote Access on macOS
+      - name: Enable Screen Sharing & Tailscale
         run: |
-          # Install a VNC server using Homebrew
-          brew install --cask vnc-server
+          # 1. Enable macOS Screen Sharing (VNC)
+          # These commands use a built-in macOS utility to enable screen sharing
+          # and set a password. Replace 'your-password' with your desired password.
+          # WARNING: This password is in plain text. Use a secret for a real project.
+          sudo defaults write /var/db/launchd.plist com.apple.screensharing.enabled -bool true
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users your-username -privs -all -restart -agent -menu
           
-          # Configure and start the VNC server in the background
-          # Note: This requires an interactive setup. You may need to pre-configure it
-          # or use a different VNC server that can be configured non-interactively.
-          vncserver -localhost no :1 &
+          # 2. Install and configure Tailscale
+          # The tailscaled daemon must be running for tailscale commands to work
+          /opt/homebrew/bin/brew install tailscale
+          sudo /opt/homebrew/opt/tailscale/bin/tailscaled --socket=/tmp/tailscaled.sock &
           
-          # Install Tailscale
-          brew install tailscale
+          # Wait for the Tailscale daemon to start
+          sleep 5
           
-          # Authenticate with Tailscale (replace with your auth key)
-          tailscale up --authkey=${{ secrets.TAILSCALE_PREAUTHKEY }}
+          # 3. Authenticate with Tailscale using your secret
+          # Use your Tailscale Pre-auth Key here.
+          /opt/homebrew/opt/tailscale/bin/tailscale up --authkey=${{ secrets.TAILSCALE_PREAUTHKEY }} --socket=/tmp/tailscaled.sock
           
-          # Get and print the Tailscale IP
-          ts_ip=$(tailscale ip -4)
+          # 4. Get the Tailscale IP and print connection details
+          ts_ip=$(/opt/homebrew/opt/tailscale/bin/tailscale ip -4 --socket=/tmp/tailscaled.sock)
           echo "TAILSCALE_IP=$ts_ip" >> $GITHUB_ENV
           
-          echo "VNC Server is running on $ts_ip"
-          
-          # Keep the job alive for 6 hours
+          echo "VNC server is running. Connect to: $ts_ip"
+          echo "Username: your-username"
+          echo "Password: your-password"
+
+          # 5. Hold the runner live
           echo "Holding runner live for 6 hours..."
           sleep 21600 # 6 hours in seconds
