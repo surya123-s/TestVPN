@@ -105,7 +105,9 @@ jobs:
           Write-Host "/sound:sys:alsa +clipboard /frame-ack:1"
           Write-Host "=================="
 
+      - name: Maintain Connection (For 6 Hrs only)
+        run: |
           while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-              Start-Sleep -Seconds 300
+           Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+           Start-Sleep -Seconds 300
           }
