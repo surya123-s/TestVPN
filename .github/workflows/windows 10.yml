@@ -103,7 +103,7 @@ jobs:
           Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:'Surya@12345RDP' /f \`"
           Write-Host "/gfx-h264 /rfx /network:auto /compression /jpeg \`"
           Write-Host "/sound:sys:alsa +clipboard /frame-ack:1"
-          Write-Host "=================="
+          Write-Host "==================`n"
 
       - name: Maintain Connection (For 6 Hrs only)
         run: |
