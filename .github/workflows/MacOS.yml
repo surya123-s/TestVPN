@@ -8,9 +8,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 360 # This is the maximum allowed duration for a GitHub-hosted runner
 
-steps:  
-  - name: Set up Remote Access on macOS
-    run: |
+    steps:  
+     - name: Set up Remote Access on macOS
+        run: |
       # Install VNC server using Homebrew
       brew install --cask vnc-server
 
