@@ -91,16 +91,43 @@ jobs:
           Write-Host "TCP connectivity successful!"
 
       - name: Maintain Connection (For 6 Hrs only)
-        run: |
-          Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: cyberpunk"
-          Write-Host "Password: Surya@12345RDP"
-          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /clipboard /sound"
-          Write-Host "For low network or best performance use this command :"
-          Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /fast-path /network:modem /bpp:16 /compression /gfx:rfx /codec-cache:per-session /sound:sys:alsa /clipboard"
-          Write-Host "==================`n"
+  run: |
+    Write-Host "`n=== RDP ACCESS ==="
+    Write-Host "Address: $env:TAILSCALE_IP"
+    Write-Host "Username: cyberpunk"
+    Write-Host "Password: Surya@12345RDP"
+
+    Write-Host "=================="
+
+    Write-Host "=====  If you want cli runner  ========"
+
+    Write-Host "====  Then install first xfreerdp Else Use Remmina ======="
+
+    Write-Host "Command => sudo pacman -S xfreerdp "
+    Write-Host "=== Now You Can use Below Commands ==="
+
+    Write-Host "=== If you Have Higher Bandwidth Network thne use this ====="
+    Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /clipboard /sound"
+    Write-Host "=================="
+    
+    Write-Host "For low network or best performance use this command :"
+    Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:Surya@12345RDP /f /fast-path /network:modem /bpp:16 /compression /gfx:rfx /codec-cache:per-session /sound:sys:alsa /clipboard"
+    Write-Host "=================="
+    Write-Host "=====  And For Arch+Hyperland User  ======="
+    Write-Host "==================`n"
+    Write-Host "=== For Lower Internet connection ===="
+
+    Write-Host "env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb \`"
+    Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:'Surya@12345RDP' /f \`"
+    Write-Host "/gfx-h264 /rfx /network:auto /compression /jpeg \`"
+    Write-Host "/sound:sys:alsa +clipboard /frame-ack:1"
+
+    while ($true) {
+        Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+        Start-Sleep -Seconds 300
+    }
           
+
           while ($true) {
               Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
               Start-Sleep -Seconds 300
