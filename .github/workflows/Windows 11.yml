@@ -107,7 +107,7 @@ jobs:
           Write-Host "├───────────────────────────────────────────────┤"
           Write-Host "│  Low Bandwidth:                               │"
           Write-Host "│  xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk \ │"
-          Write-Host "│  /p:Surya@12345RDP /f /fast-path /network:modem│"
+          Write-Host "│ /p:Surya@12345RDP /f /fast-path /network:modem│"
           Write-Host "├───────────────────────────────────────────────┤"
           Write-Host "│  For Arch+Hyperland Users: Copy all 4 lines   │"
           $rdp_command = @"
