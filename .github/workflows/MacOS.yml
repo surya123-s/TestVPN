@@ -1,52 +1,43 @@
-name: macOS Full Desktop via Tailscale + noVNC
+name: macOS VNC via Tailscale
 
 on:
   workflow_dispatch:
 
 jobs:
-  macos-desktop:
+  vnc:
     runs-on: macos-latest
-    timeout-minutes: 360   # 6 hours
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # 1. Install and start Tailscale
       - name: Install Tailscale
         run: |
-          brew install tailscale
+          brew install --cask tailscale
           sudo tailscaled > /tmp/tailscaled.log 2>&1 &
           sleep 5
-          sudo tailscale up --ssh --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=github-macos
+          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname github-macos-runner
+          echo "✅ Tailscale started"
+          tailscale ip -4
 
-      - name: Show Tailscale IP
-        run: tailscale ip -4
-
-      # 2. Enable macOS built-in Screen Sharing (VNC server)
-      - name: Enable VNC on macOS
+      - name: Enable VNC server
         run: |
-          VNC_PASS="mypassword"  # change or move to secrets
+          echo "Setting VNC password..."
+          VNC_PASS="mypassword"   # 🔑 Change this to your own password
+          
+          # Enable Remote Management
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate -configure -access -on -restart -agent -privs -all
-          echo "$VNC_PASS" | security add-generic-password -a runner -s vnc-password -w "$VNC_PASS" -U
-          echo "VNC enabled on port 5900 with password: $VNC_PASS"
+          
+          # Set VNC password
+          sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStart -bool true
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Support/VNCPasswordTool -set "$VNC_PASS"
+          
+          echo "✅ VNC Enabled with password: $VNC_PASS"
+          echo "👉 Connect using: vnc://$(tailscale ip -4):5900"
 
-      # 3. Install and run noVNC for browser access
-      - name: Install noVNC
+      - name: Keep Alive for 6h
         run: |
-          brew install git
-          git clone https://github.com/novnc/noVNC.git ~/noVNC
-          git clone https://github.com/novnc/websockify.git ~/noVNC/utils/websockify
-          nohup ~/noVNC/utils/launch.sh --vnc localhost:5900 --listen 6080 > /tmp/novnc.log 2>&1 &
-
-          echo "======================================="
-          echo "✅ macOS Desktop is live!"
-          echo "Tailscale IP: $(tailscale ip -4)"
-          echo "Browser URL (connect via Tailscale VPN):"
-          echo "    http://$(tailscale ip -4):6080/vnc.html"
-          echo "======================================="
-
-      # 4. Keep workflow alive for 6 hours
-      - name: Keep Alive
-        run: sleep 21600
+          echo "========================================="
+          echo "✅ macOS VNC is ready!"
+          echo "Connect from any Tailscale device:"
+          echo "   vnc://$(tailscale ip -4):5900"
+          echo "Password = mypassword"
+          echo "========================================="
+          sleep 21600
