@@ -13,30 +13,30 @@ jobs:
       - name: Install Tailscale
         run: |
           brew install tailscale
-          sudo tailscaled --state=mem: --socket=/tmp/tailscaled.sock &
+          sudo /opt/homebrew/opt/tailscale/bin/tailscaled --state=mem: &
           sleep 5
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --socket=/tmp/tailscaled.sock --hostname=github-macos
+          sudo tailscale up --auth-key=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=github-macos
 
-      - name: Setup VNC server
+      - name: Enable Screen Sharing (VNC)
         run: |
-          # Set VNC password
-          echo "mypassword" | security add-generic-password -a $USER -s vnc-password -w
-          # Enable Screen Sharing (VNC)
+          # Set VNC password (change this or use a secret!)
+          VNC_PASS="mypassword"
+          echo "$VNC_PASS" | security add-generic-password -a $USER -s vnc-password -w
+          # Enable ARD (Apple Remote Desktop)
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate -configure -access -on -users $USER -privs -all -restart -agent -menu
-          # Allow VNC clients with password
+          # Enable VNC password auth
           sudo defaults write /Library/Preferences/com.apple.VNCSettings VNCAlwaysStartOnConsole -bool true
-          sudo defaults write /Library/Preferences/com.apple.VNCSettings Password -data $(echo -n "mypassword" | base64)
-          echo "VNC enabled with password 'mypassword'"
+          echo "$VNC_PASS" | iconv -t UTF-16LE | openssl md5 -binary | xxd -p | tr -d '\n' | sudo tee /Library/Preferences/com.apple.VNCSettings.plist >/dev/null
+          echo "VNC enabled with password: $VNC_PASS"
 
       - name: Show Tailscale IP
         run: |
           echo "========== Tailscale Node Info =========="
-          tailscale ip --socket=/tmp/tailscaled.sock
+          tailscale ip
           echo "========================================="
-          echo "Connect with a VNC client to above Tailscale IP (port 5900)."
+          echo "Connect using: vnc://<tailscale-ip>:5900"
           echo "Password: mypassword"
-          echo "Session will stay alive for 6 hours."
-
+ 
       - name: Keep session alive (6 hours)
         run: sleep 21600
