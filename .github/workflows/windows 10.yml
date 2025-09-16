@@ -100,12 +100,12 @@ jobs:
     Write-Host "=====  And For Arch+Hyperland User  ======="
     Write-Host "==================`n"
     Write-Host "=== For Lower Internet connection ===="
-    Write-Host "env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb \`"
-    Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:'Surya@12345RDP' /f \`"
-    Write-Host "/gfx-h264 /rfx /network:auto /compression /jpeg \`"
+    Write-Host "env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb `"
+    Write-Host "xfreerdp /v:$env:TAILSCALE_IP /u:cyberpunk /p:'Surya@12345RDP' /f `"
+    Write-Host "/gfx-h264 /rfx /network:auto /compression /jpeg `"
     Write-Host "/sound:sys:alsa +clipboard /frame-ack:1"
 
-      while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-              Start-Sleep -Seconds 300
-          }
+    while ($true) {
+        Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+        Start-Sleep -Seconds 300
+    }
