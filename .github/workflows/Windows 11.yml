@@ -95,7 +95,7 @@ jobs:
           Write-Host "┌───────────────────────────────────────────────┐"
           Write-Host "│                 ACCESS RDP                    │"
           Write-Host "├──────────────┬────────────────────────────────┤"
-          Write-Host "│ Address      │ $env:TAILSCALE_IP              │"
+          Write-Host "│ Address      │ $env:TAILSCALE_IP                 │"
           Write-Host "│ Username     │ cyberpunk                      │"
           Write-Host "│ Password     │ Surya@12345RDP                 │"
           Write-Host "├──────────────┴────────────────────────────────┤"
