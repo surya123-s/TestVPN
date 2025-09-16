@@ -1,71 +1,39 @@
-name: macOS VNC with Tailscale
+name: macOS Live Runner
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-vnc:
+  macos-runner:
     runs-on: macos-latest
-    timeout-minutes: 4320 # 72 hours
+    timeout-minutes: 360 # This is the maximum allowed duration for a GitHub-hosted runner
 
+  steps:  
+  - name: Set up Remote Access on macOS
+    run: |
+      # Install VNC server using Homebrew
+      brew install --cask vnc-server
+
+      # Start the VNC server in the background
+      vncserver -localhost no :1
+
+      # Get and print the Tailscale IP
+      ts_ip=$(tailscale ip -4)
+      echo "TAILSCALE_IP=$ts_ip" >> $GITHUB_ENV
+
+      echo "VNC Server is running on $ts_ip"
+
+      # Keep the job alive
+      sleep 3600
+
+      
     steps:
-      - name: Create VNC User and Enable Screen Sharing
-        run: |
-          USERNAME="cyberpunk"
-          PASSWORD="Surya@12345VNC"
-
-          # Create VNC user
-          if dscl . -list /Users | grep -q "$USERNAME"; then
-            echo "User $USERNAME already exists. Skipping creation."
-          else
-            sudo dscl . -create /Users/$USERNAME
-            sudo dscl . -create /Users/$USERNAME UserShell /bin/zsh
-            sudo dscl . -create /Users/$USERNAME RealName "$USERNAME"
-            sudo dscl . -create /Users/$USERNAME UniqueID $((1000 + RANDOM % 100))
-            sudo dscl . -create /Users/$USERNAME PrimaryGroupID 20 # staff group
-            sudo dscl . -create /Users/$USERNAME Password "$PASSWORD"
-            sudo dscl . -create /Users/$USERNAME IsHidden 1
-            sudo dscl . -append /Groups/admin GroupMembership $USERNAME
-          fi
-
-          # Enable VNC (Screen Sharing) with VNC viewers
-          sudo defaults write /var/db/launchd.db/com.apple.launchd/overrides.plist com.apple.screensharing -dict Disabled -bool false
-          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
-
-          # Allow remote control for the VNC user
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -accesson -privs -all -allowAccessFor -users $USERNAME
-
-          echo "VNC_CREDS=User: $USERNAME | Password: $PASSWORD" >> $GITHUB_ENV
-
-      - name: Install Tailscale
-        run: |
-          brew install tailscale
-
-      - name: Establish Tailscale Connection
-        run: |
-          AUTH_KEY="${{ secrets.TAILSCALE_PREAUTHKEY }}"
-          HOSTNAME="gh-runner-$GITHUB_RUN_ID"
-
-          sudo tailscale up --authkey=$AUTH_KEY --hostname=$HOSTNAME --accept-routes
-
-          TS_IP=$(tailscale ip -4)
-          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
-          
-      - name: Verify VNC Accessibility
-        run: |
-          echo "Tailscale IP: $TAILSCALE_IP"
-          # VNC uses port 5900
-          nc -vz $TAILSCALE_IP 5900
-
-      - name: Maintain Connection
-        run: |
-          echo -e "\n=== VNC ACCESS ==="
-          echo "Address: $TAILSCALE_IP"
-          echo "Username: cyberpunk"
-          echo "Password: Surya@12345VNC"
-          echo "==================\n"
-          
-          while true; do
-            echo "[$(date)] VNC Active - Use Ctrl+C to terminate"
+    - name: Hold the runner live
+      run: |
+            echo "This job will stay live for up to 6 hours..."
+            # The loop will keep the job running by delaying for 5-minute intervals.
+            # It's set to run for 360 minutes total, but the loop is a safeguard.
+            for ((i=0; i<360; i+=5)); do
+            echo "Runner is still live. Remaining time: $((360 - i)) minutes"
             sleep 300
-          done
+            done
