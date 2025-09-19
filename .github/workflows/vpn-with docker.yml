@@ -114,7 +114,7 @@ jobs:
       - name: Show Logs
         run: docker logs wzml-x-container || true
 
-         - name: Live Telegram Notification
+      - name: Live Telegram Notification
         run: |
           START_TIME=${{ env.START_TIME }}
           UTC_HOUR=$(date -u +%H)
@@ -169,7 +169,6 @@ jobs:
 
             sleep 30
           done
-
 
       - name: Cleanup Exit Node
         if: always()
