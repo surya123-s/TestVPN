@@ -104,7 +104,6 @@ jobs:
             -p 8080:8080 \
             -e BOT_TOKEN="${{ secrets.BOT_TOKEN }}" \
             -e OWNER_ID="${{ secrets.OWNER_ID }}" \
-            -e OWNER_ID="${{ secrets.SUDO_USERS }}" \
             -e TELEGRAM_API="${{ secrets.TELEGRAM_API }}" \
             -e LEECH_DUMP_CHAT="${{ secrets.LEECH_DUMP_CHAT }}" \
             -e TELEGRAM_HASH="${{ secrets.TELEGRAM_HASH }}" \
