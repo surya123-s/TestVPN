@@ -4,11 +4,11 @@ on:
   #schedule:
    # - cron: "0 */5 * * *"
   #on:
-  schedule:
-    - cron: "30 1 * * *" #7 AM IST
-    - cron: "30 6 * * *" #12 PM
-    - cron: "30 11 * * *" #5 PM
-    - cron: "30 16 * * *" #10 PM
+  #schedule:
+   # - cron: "30 1 * * *" #7 AM IST
+   # - cron: "30 6 * * *" #12 PM
+   # - cron: "30 11 * * *" #5 PM
+   # - cron: "30 16 * * *" #10 PM
 
     
 
@@ -165,3 +165,12 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id=${{ secrets.TG_CHAT_ID }} \
             -d text="$MSG"
+
+      - name: Re-dispatch Workflow
+        if: always()
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ github.workflow }}/dispatches \
+            -d '{"ref":"${{ github.ref }}"}'
