@@ -13,14 +13,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Upgrade System Packages
-        run: |
-          sudo apt-get update -y
-          sudo apt-get upgrade -y
-          sudo apt-get dist-upgrade -y || true
-          sudo apt-get autoremove -y
-
-    
+      # - name: Upgrade System Packages
+      #   run: |
+      #     sudo apt-get update -y
+      #     sudo apt-get upgrade -y
+      #     sudo apt-get dist-upgrade -y || true
+      #     sudo apt-get autoremove -y
+   
       - name: Install Tailscale + jq
         run: |
           sudo apt-get update  
@@ -118,8 +117,8 @@ jobs:
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             wzml-x
 
-      - name: Show Logs
-        run: docker logs wzml-x-container || true
+      # - name: Show Logs
+      #   run: docker logs wzml-x-container || true
 
       - name: Live Telegram Notification
         run: |
