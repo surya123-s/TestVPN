@@ -111,15 +111,15 @@ jobs:
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             wzml-x
 
-      # - name: Show Logs
-      #   run: docker logs wzml-x-container || true
+      - name: Show Logs
+        run: docker logs wzml-x-container || true
       #apt-get update && apt-get install -y ffmpeg yt-dlp
       
-      - name: Again Install FFmpeg and yt-dlp
+      - name: Again Install FFmpeg 
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg yt-dlp
-          sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get install -y ffmpeg 
+          
 
       - name: Live Telegram Notification
         run: |
