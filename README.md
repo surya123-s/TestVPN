@@ -43,14 +43,14 @@ tailscale up --exit-node=<worker_tailscale_ip>
 ```
 
 
-##🍰 Guidelines:
+**🍰 Guidelines:-**
 
 Use at own risk. I am not responsible for break of any Terms and conditions of any companies and businesses.
 
 ---
 
-##🙏 Credits
----
+**🙏 Credits**
+
 Made with ❤️ by **Surya..!!!**  
 For **learning & educational purpose only**
 
