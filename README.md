@@ -1,7 +1,6 @@
-#![Cat Demo](https://github.com/surya123-s/TestVPN/raw/main/cat.gif)
 
 <p align="center">
-  <img src="https://github.com/surya123-s/TestVPN/raw/main/cat.gif" width="600" />
+  <img src="https://github.com/surya123-s/TestVPN/raw/main/cat.gif" width="200" />
 </p>
 
 
