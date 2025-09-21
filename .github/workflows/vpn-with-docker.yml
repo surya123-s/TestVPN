@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Install Tailscale + jq
         run: |
-          sudo apt-get update && apt-get upgrade  
+          sudo apt-get update && apt upgrade  
           sudo apt-get install -y curl jq
           curl -fsSL https://tailscale.com/install.sh | sh
 
