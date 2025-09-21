@@ -53,10 +53,9 @@ tailscale up --exit-node=<worker_tailscale_ip>
 
 Use at own risk. I am not responsible for break of any Terms and conditions of any companies and businesses.
 
-<p align="center">
-  <img src="https://github.com/surya123-s/TestVPN/raw/gif/responsible.gif" width="300" />
+<p align="left">
+  <img src="https://github.com/surya123-s/TestVPN/raw/gif/responsible.gif" width="400" />
 </p>
-
 
 ---
 
