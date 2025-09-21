@@ -7,15 +7,15 @@ on:
   #   - cron: "30 6 * * *"   #12 PM
   #   - cron: "30 11 * * *"  #5 PM
   #   - cron: "30 16 * * *"  #10 PM
-
+  #upgrade is new code line in line no. 18
 jobs:
   run-tailscale:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Install Tailscale + jq
         run: |
-          sudo apt-get update
+          sudo apt-get update && apt-get upgrade  
           sudo apt-get install -y curl jq
           curl -fsSL https://tailscale.com/install.sh | sh
 
