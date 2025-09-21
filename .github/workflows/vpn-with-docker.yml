@@ -119,7 +119,7 @@ jobs:
       - name: Again Install FFmpeg 
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg          
+          sudo apt-get install -y ffmpeg        
 
       - name: Live Telegram Notification
         run: |
