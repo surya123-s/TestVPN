@@ -13,13 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # - name: Upgrade System Packages
-      #   run: |
-      #     sudo apt-get update -y
-      #     sudo apt-get upgrade -y
-      #     sudo apt-get dist-upgrade -y || true
-      #     sudo apt-get autoremove -y
-   
+        
       - name: Install Tailscale + jq
         run: |
           sudo apt-get update  
@@ -119,6 +113,16 @@ jobs:
 
       # - name: Show Logs
       #   run: docker logs wzml-x-container || true
+      #apt-get update && apt-get install -y ffmpeg yt-dlp
+      
+      - name: Again Install FFmpeg and yt-dlp
+        run: |
+          apt-get update
+          apt-get install -y ffmpeg yt-dlp
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Verify Container ffmpeg
+        run: docker exec wzml-x-container ffmpeg -version
 
       - name: Live Telegram Notification
         run: |
