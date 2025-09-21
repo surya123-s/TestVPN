@@ -103,7 +103,7 @@ jobs:
             --name wzml-x-container \
             -p 80:80 \
             -p 8080:8080 \
-            -p 8090:8090 \       
+            -p 8090:8090 \
             -e BOT_TOKEN="${{ secrets.BOT_TOKEN }}" \
             -e OWNER_ID="${{ secrets.OWNER_ID }}" \
             -e TELEGRAM_API="${{ secrets.TELEGRAM_API }}" \
@@ -116,10 +116,10 @@ jobs:
         run: docker logs wzml-x-container || true
       #apt-get update && apt-get install -y ffmpeg yt-dlp
       
-      - name: Again Install FFmpeg 
+      - name: Again Install FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg        
+          sudo apt-get install -y ffmpeg
 
       - name: Live Telegram Notification
         run: |
