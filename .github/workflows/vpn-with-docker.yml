@@ -13,12 +13,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Upgrade System Packages
+        run: |
+          sudo apt-get update -y
+          sudo apt-get upgrade -y
+          sudo apt-get dist-upgrade -y || true
+          sudo apt-get autoremove -y
+
+    
       - name: Install Tailscale + jq
         run: |
           sudo apt-get update  
           sudo apt-get install -y curl jq
           curl -fsSL https://tailscale.com/install.sh | sh
-
+         
       - name: Enable IP Forwarding
         run: |
           sudo sysctl -w net.ipv4.ip_forward=1
