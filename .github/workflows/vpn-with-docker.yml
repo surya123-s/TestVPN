@@ -121,9 +121,6 @@ jobs:
           sudo apt-get install -y ffmpeg yt-dlp
           sudo rm -rf /var/lib/apt/lists/*
 
-      - name: Verify Container ffmpeg
-        run: docker exec wzml-x-container ffmpeg -version
-
       - name: Live Telegram Notification
         run: |
           START_TIME=${{ env.START_TIME }}
