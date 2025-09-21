@@ -1,4 +1,8 @@
-![Cat Demo](https://github.com/surya123-s/TestVPN/raw/main/cat.gif)
+#![Cat Demo](https://github.com/surya123-s/TestVPN/raw/main/cat.gif)
+
+<p align="center">
+  <img src="https://github.com/surya123-s/TestVPN/raw/main/cat.gif" width="600" />
+</p>
 
 
 # 🌐 Tailscale VPN Node on GitHub Actions
