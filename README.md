@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/surya123-s/repo/main/doc_2025-09-21_14-27-16.gif" width="600" />
+</p>
+
+
 # 🌐 Tailscale VPN Node on GitHub Actions
 
 Easily deploy a **temporary VPN exit node** using **Tailscale** + **GitHub Actions**.  
