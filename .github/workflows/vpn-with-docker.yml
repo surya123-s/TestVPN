@@ -91,16 +91,13 @@ jobs:
         if: env.repo_cloned == 'true'
         run: |
           cd WZML-X
-          docker build -t wzml-x .
+          docker build -t cyber .
 
       - name: Run Docker Container
         if: env.repo_cloned == 'true'
         run: |
-          docker stop wzml-x-container || true
-          docker rm wzml-x-container || true
-
           docker run -d \
-            --name wzml-x-container \
+            --name cyber-container \
             -p 80:80 \
             -p 8080:8080 \
             -p 8090:8090 \
@@ -110,17 +107,11 @@ jobs:
             -e LEECH_DUMP_CHAT="${{ secrets.LEECH_DUMP_CHAT }}" \
             -e TELEGRAM_HASH="${{ secrets.TELEGRAM_HASH }}" \
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            wzml-x
+            cyber-x
 
       - name: Show Logs
-        run: docker logs wzml-x-container || true
+        run: docker logs cyber-container || true
       #apt-get update && apt-get install -y ffmpeg yt-dlp
-      
-      - name: Again Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
       - name: Live Telegram Notification
         run: |
           START_TIME=${{ env.START_TIME }}
