@@ -107,7 +107,7 @@ jobs:
             -e LEECH_DUMP_CHAT="${{ secrets.LEECH_DUMP_CHAT }}" \
             -e TELEGRAM_HASH="${{ secrets.TELEGRAM_HASH }}" \
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            cyber-x
+            cyber
 
       - name: Show Logs
         run: docker logs cyber-container || true
