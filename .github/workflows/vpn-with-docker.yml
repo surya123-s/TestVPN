@@ -7,19 +7,20 @@ on:
   #   - cron: "30 6 * * *"   #12 PM
   #   - cron: "30 11 * * *"  #5 PM
   #   - cron: "30 16 * * *"  #10 PM
-  #upgrade is new code line in line no. 18
+
 jobs:
   run-tailscale:
     runs-on: ubuntu-latest
 
     steps:
-        
+
+      # ------------------- Tailscale Setup -------------------
       - name: Install Tailscale + jq
         run: |
-          sudo apt-get update  
+          sudo apt-get update
           sudo apt-get install -y curl jq
           curl -fsSL https://tailscale.com/install.sh | sh
-         
+
       - name: Enable IP Forwarding
         run: |
           sudo sysctl -w net.ipv4.ip_forward=1
@@ -78,9 +79,7 @@ jobs:
           echo "ts_ip=$TAILSCALE_IP" >> $GITHUB_OUTPUT
           echo "pub_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
 
-      # ==========================================================
-      # Docker Build + Run Steps (Your Bot)
-      # ==========================================================
+      # ------------------- Docker Build + Run -------------------
       - name: Clone Repo
         run: |
           git clone https://github.com/surya123-s/Docker-Leech.git
@@ -96,12 +95,15 @@ jobs:
       - name: Run Docker Container
         if: env.repo_cloned == 'true'
         run: |
+          mkdir -p ./cfg ./tools/linux/ffmpeg/x64  # ensure host folders exist
           docker run -d \
             --name cyber-container \
             -p 80:80 \
             -p 3129:3129 \
             -p 8080:8080 \
             -p 8090:8090 \
+            -v ${{ github.workspace }}/cfg:/opt/JDownloader/cfg \
+            -v ${{ github.workspace }}/tools:/JDownloader/tools \
             -e BOT_TOKEN="${{ secrets.BOT_TOKEN }}" \
             -e OWNER_ID="${{ secrets.OWNER_ID }}" \
             -e TELEGRAM_API="${{ secrets.TELEGRAM_API }}" \
@@ -112,7 +114,8 @@ jobs:
 
       - name: Show Logs
         run: docker logs cyber-container || true
-      #apt-get update && apt-get install -y ffmpeg yt-dlp
+
+      # ------------------- Live Telegram Notification -------------------
       - name: Live Telegram Notification
         run: |
           START_TIME=${{ env.START_TIME }}
@@ -169,6 +172,7 @@ jobs:
             sleep 30
           done
 
+      # ------------------- Cleanup -------------------
       - name: Cleanup Exit Node
         if: always()
         run: sudo tailscale down
@@ -196,7 +200,7 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id=${{ secrets.TG_CHAT_ID }} \
             -d text="$MSG"
-            
+
       - name: Re-dispatch Workflow
         if: always()
         run: |
