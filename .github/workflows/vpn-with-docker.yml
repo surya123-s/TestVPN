@@ -95,7 +95,7 @@ jobs:
       - name: Run Docker Container
         if: env.repo_cloned == 'true'
         run: |
-          mkdir -p ./cfg ./tools/linux/ffmpeg/x64  # ensure host folders exist
+          mkdir -p ./cfg ./tools/linux/ffmpeg/x64
           docker run -d \
             --name cyber-container \
             -p 80:80 \
