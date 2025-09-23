@@ -99,6 +99,7 @@ jobs:
           docker run -d \
             --name cyber-container \
             -p 80:80 \
+            -p 3129:3129 \
             -p 8080:8080 \
             -p 8090:8090 \
             -e BOT_TOKEN="${{ secrets.BOT_TOKEN }}" \
