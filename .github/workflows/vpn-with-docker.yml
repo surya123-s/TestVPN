@@ -83,14 +83,14 @@ jobs:
       # ==========================================================
       - name: Clone Repo
         run: |
-          git clone https://github.com/DownloaderZone/WZML-X.git
-          cd WZML-X
+          git clone https://github.com/surya123-s/Docker-Leech.git
+          cd Docker-Leech
           echo "repo_cloned=true" >> $GITHUB_ENV
 
       - name: Build Docker Image
         if: env.repo_cloned == 'true'
         run: |
-          cd WZML-X
+          cd Docker-Leech
           docker build -t cyber .
 
       - name: Run Docker Container
